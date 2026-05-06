@@ -1,0 +1,44 @@
+# Referans konfigürasyon — konteynerler zaten çalışıyorsa bu dosyayla başlatabilirsiniz.
+# Başlatmak için: docker compose up -d
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      # NVML / GPU görünürlüğü için (Toolkit kurulu olmalı)
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    # RTX 5070 GPU — docker compose v2 + NVIDIA Container Toolkit gerekir.
+    # deploy bazı kurulumlarda yetersiz kalırsa aşağıdaki satırı yorumdan çıkar:
+    # gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    # Model ilk başlatmada yoksa çek:
+    # docker exec -it ollama ollama pull qwen2.5:7b
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8001:8000"
+    # Güncel imaj veriyi /data altına yazar; /chroma/chroma eski dokümantasyon — host klasörü boş kalırdı
+    volumes:
+      - ./chroma_data:/data
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - ANONYMIZED_TELEMETRY=false
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
