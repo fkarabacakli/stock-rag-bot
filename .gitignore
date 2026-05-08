@@ -7,6 +7,8 @@ __pycache__/
 
 logs/
 chroma_data/
+ollama_data/
+preview/
 
 .pytest_cache/
 .mypy_cache/
