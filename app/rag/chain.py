@@ -116,6 +116,63 @@ def _chunks_to_sources(chunks: list[RetrievedChunk]) -> list[dict]:
     return sources
 
 
+def _apply_sabah_overview_fallback(parsed: dict, chunks: list[RetrievedChunk]) -> dict:
+    """
+    For morning overview questions, sometimes model returns valid JSON but leaves
+    summary/list fields empty. Build a lightweight fallback from retrieved chunks.
+    """
+    if parsed.get("ozet") or parsed.get("sirket_haber_ozetleri"):
+        return parsed
+
+    items: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    for chunk in chunks:
+        meta = chunk.metadata
+        ticker = (meta.get("stock_code") or meta.get("hisse") or "").strip().upper()
+        company = (meta.get("sirket") or meta.get("company") or "").strip()
+        key = (ticker, company.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+
+        short_text = " ".join((chunk.text or "").strip().split())
+        if short_text:
+            short_text = short_text[:220].rstrip(" .,:;") + "."
+        else:
+            short_text = "Bu kayıt ilgili bültende öne çıkan başlıklar arasında yer alıyor."
+
+        items.append(
+            {
+                "hisse_kodu": ticker or None,
+                "sirket_adi": company or ("Belirtilmemiş" if not ticker else ""),
+                "kisa_ozet": short_text,
+            }
+        )
+        if len(items) >= 18:
+            break
+
+    if items:
+        first_labels = []
+        for it in items[:5]:
+            label = it["hisse_kodu"] or it["sirket_adi"] or "Kayıt"
+            first_labels.append(str(label))
+        parsed["ozet"] = (
+            f"Sabah bültenlerinde öne çıkan {len(items)} şirket/kurum bulundu: "
+            + ", ".join(first_labels)
+            + "."
+        )
+        parsed["sirket_haber_ozetleri"] = items
+
+    if not parsed.get("kaynaklar"):
+        parsed["kaynaklar"] = [
+            f"{s.get('source', 'unknown')} - {s.get('date', '')}".strip(" -")
+            for s in _chunks_to_sources(chunks)[:4]
+        ]
+
+    return parsed
+
+
 async def query_analysis(
     query: str,
     stock_code: Optional[str] = None,
@@ -189,6 +246,9 @@ async def query_analysis(
     )
     raw_text = msg_out.content if isinstance(msg_out, AIMessage) else str(msg_out)
     parsed = parse_json_response(raw_text)
+
+    if sabah_overview:
+        parsed = _apply_sabah_overview_fallback(parsed, chunks)
 
     if not parsed.get("hisse_kodu") and stock_code:
         parsed["hisse_kodu"] = stock_code.upper()

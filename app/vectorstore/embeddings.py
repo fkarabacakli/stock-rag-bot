@@ -4,10 +4,10 @@ Embedding function singleton.
 Uses sentence-transformers with a multilingual model that handles both
 Turkish bulletin content and mixed Turkish/English queries.
 
-Model: paraphrase-multilingual-mpnet-base-v2
-  - 768-dimensional embeddings
-  - ~420 MB disk, ~1.5 GB RAM
-  - Supports 50+ languages including Turkish
+Default model: BAAI/bge-m3
+  - Strong multilingual retrieval quality
+  - Higher resource usage than lightweight alternatives
+  - Supports Turkish and mixed-language finance queries
 """
 from __future__ import annotations
 

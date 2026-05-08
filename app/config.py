@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     chroma_collection_name: str = "financial_bulletins"
 
     # Embedding (host'ta SentenceTransformers + PyTorch)
-    embedding_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+    embedding_model: str = "BAAI/bge-m3"
     # auto: CUDA varsa GPU, yoksa CPU | cuda | cpu — PyTorch'un CUDA build'i kurulu olmalı
     embedding_device: str = "auto"
 

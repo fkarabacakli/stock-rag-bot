@@ -57,6 +57,76 @@ WELCOME_MESSAGE = (
     "doğrudan yazabilir veya aşağıdaki *Bugün hangi şirketler?* düğmesine basabilirsiniz."
 )
 
+HELP_INTENT_MESSAGE = (
+    "Merhaba! Yapabileceklerim:\n\n"
+    "• /analiz THYAO — Hisse analizi\n"
+    "• /haftalik GARAN — Haftalık özet\n"
+    "• /kurumlar — Kaynak kurum seçimi\n"
+    "• /model — Model seçimi\n"
+    "• /durum — Sistem durumu\n"
+    "• /ingest — Manuel veri toplama\n\n"
+    "Ayrıca serbest metin de yazabilirsiniz:\n"
+    "• 'Bugün sabah stratejisinde hangi şirketler var?'\n"
+    "• 'THYAO için bu haftaki destek direnç seviyeleri neler?'"
+)
+
+_HELP_INTENT_PATTERNS = [
+    r"^merhaba[.! ]*$",
+    r"^selam[.! ]*$",
+    r"^selamlar[.! ]*$",
+    r"^hi[.! ]*$",
+    r"^hello[.! ]*$",
+    r"^neler yapabilirsin\??$",
+    r"^ne yapabilirsin\??$",
+    r"^yard[iı]m\??$",
+    r"^help$",
+    r"^komutlar\??$",
+    r"^nas[ıi]l kullan[ıi]l[ıi]r\??$",
+]
+
+
+def _is_help_intent(text: str) -> bool:
+    cleaned = text.strip().lower()
+    return any(re.match(pattern, cleaned) for pattern in _HELP_INTENT_PATTERNS)
+
+
+async def _reply_html_chunked(
+    update: Update,
+    text: str,
+    *,
+    chunk_size: int = 3500,
+) -> None:
+    """
+    Send long HTML replies in multiple Telegram messages.
+    Keeps chunks under Telegram limits to avoid 'Message is too long'.
+    """
+    if len(text) <= chunk_size:
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return
+
+    parts: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for line in text.split("\n"):
+        line_len = len(line) + 1
+        if current and current_len + line_len > chunk_size:
+            parts.append("\n".join(current))
+            current = [line]
+            current_len = line_len
+        else:
+            current.append(line)
+            current_len += line_len
+
+    if current:
+        parts.append("\n".join(current))
+
+    for idx, part in enumerate(parts):
+        if idx == 0:
+            await update.message.reply_text(part, parse_mode=ParseMode.HTML)
+        else:
+            await update.message.reply_text(f"(devam)\n{part}", parse_mode=ParseMode.HTML)
+
 
 def _format_rag_response(data: dict) -> str:
     """
@@ -104,45 +174,6 @@ def _format_rag_response(data: dict) -> str:
             kisa = item.get("kisa_ozet") or ""
             label = f"{kod}" + (f" ({ad})" if ad else "")
             lines.append(f"  • <b>{e(str(label))}</b> — {e(str(kisa))}")
-        lines.append("")
-
-    seviyeler = data.get("seviyeler") or {}
-    if isinstance(seviyeler, dict) and seviyeler:
-        weekly_keys = ("destek_araligi", "direnc_araligi", "hedef_fiyat_ort")
-        if any(seviyeler.get(k) for k in weekly_keys):
-            lines.append("<b>Seviye özeti:</b>")
-            if seviyeler.get("destek_araligi"):
-                lines.append(f"  🟢 Destek: {e(str(seviyeler['destek_araligi']))}")
-            if seviyeler.get("direnc_araligi"):
-                lines.append(f"  🔴 Direnç: {e(str(seviyeler['direnc_araligi']))}")
-            if seviyeler.get("hedef_fiyat_ort"):
-                lines.append(f"  🎯 Hedef (ort.): {e(str(seviyeler['hedef_fiyat_ort']))}")
-            lines.append("")
-        elif (
-            seviyeler.get("hedef_fiyat")
-            or seviyeler.get("zarar_kes")
-            or seviyeler.get("destek")
-            or seviyeler.get("direnc")
-        ):
-            lines.append("<b>Fiyat Seviyeleri:</b>")
-            if seviyeler.get("hedef_fiyat"):
-                lines.append(f"  🎯 Hedef Fiyat: <code>{e(str(seviyeler['hedef_fiyat']))}</code>")
-            if seviyeler.get("zarar_kes"):
-                lines.append(f"  🛑 Zarar Kes: <code>{e(str(seviyeler['zarar_kes']))}</code>")
-            destek = seviyeler.get("destek") or []
-            if destek:
-                joined = " / ".join(e(str(d)) for d in destek)
-                lines.append(f"  🟢 Destek: {joined}")
-            direnc = seviyeler.get("direnc") or []
-            if direnc:
-                joined = " / ".join(e(str(d)) for d in direnc)
-                lines.append(f"  🔴 Direnç: {joined}")
-            lines.append("")
-
-    oneri = data.get("oneri")
-    if oneri:
-        emoji = {"Al": "📈", "Sat": "📉", "Tut": "⏸", "Nötr": "➡️"}.get(oneri, "💡")
-        lines.append(f"<b>Öneri:</b> {emoji} {e(str(oneri))}")
         lines.append("")
 
     notlar = data.get("onemli_notlar") or data.get("onemli_gelismeler") or []
@@ -349,11 +380,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not text:
         return
 
-    await update.message.chat.send_action(ChatAction.TYPING)
-
     # Check if message looks like a stock code query
     stock_match = re.match(r"^([A-Z]{3,5})\s*\??$", text.upper())
     if stock_match:
+        await update.message.chat.send_action(ChatAction.TYPING)
         stock_code = stock_match.group(1)
         await update.message.reply_text(
             f"*{stock_code}* hissesi için analiz türü seçin:",
@@ -361,6 +391,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             reply_markup=analysis_type_keyboard(stock_code),
         )
         return
+
+    # Small-talk/help prompts should return guidance, not trigger daily summary/free RAG.
+    if _is_help_intent(text):
+        await update.message.reply_text(HELP_INTENT_MESSAGE)
+        return
+
+    await update.message.chat.send_action(ChatAction.TYPING)
 
     model = context.user_data.get(_SESSION_MODEL_KEY)
     source = context.user_data.get(_SESSION_SOURCE_KEY)
@@ -378,10 +415,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         formatted = _format_rag_response(result.raw_json)
 
         await thinking_msg.delete()
-        await update.message.reply_text(
-            formatted,
-            parse_mode=ParseMode.HTML,
-        )
+        await _reply_html_chunked(update, formatted)
     except Exception as exc:
         logger.error(f"[bot] Free query failed: {exc}", exc_info=True)
         await update.message.reply_text(f"Bir hata oluştu: {exc}")

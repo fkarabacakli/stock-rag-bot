@@ -124,7 +124,18 @@ async def run_ingestion_pipeline() -> IngestionResult:
             logger.debug(f"[pipeline] Upserted batch {i // batch_size + 1} ({len(batch)} chunks)")
 
         except Exception as exc:
-            error_msg = f"Batch {i // batch_size + 1} failed: {exc}"
+            raw_error = str(exc)
+            if (
+                "Collection expecting embedding with dimension" in raw_error
+                and "got" in raw_error
+            ):
+                error_msg = (
+                    f"Batch {i // batch_size + 1} failed: {raw_error}. "
+                    "Embedding model dimension does not match existing Chroma collection. "
+                    "Use a new CHROMA_COLLECTION_NAME or reset the current collection."
+                )
+            else:
+                error_msg = f"Batch {i // batch_size + 1} failed: {raw_error}"
             logger.error(f"[pipeline] {error_msg}")
             result.errors.append(error_msg)
             result.skipped += len(batch)

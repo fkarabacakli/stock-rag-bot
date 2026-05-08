@@ -28,12 +28,11 @@ try:
 except ModuleNotFoundError as exc:
     print(
         f"\n[preview] Modül bulunamadı: {exc.name}\n"
-        "Bu script, bot/uvicorn çalıştırdığın Python ile aynı ortamda çalışmalı.\n"
-        "Kontrol:  which python && python -c \"import bs4\"\n"
-        "Kurulum (proje kökünde):\n"
-        "  pip install -r requirements.txt\n"
-        "veya sadece:\n"
-        "  pip install beautifulsoup4 lxml\n",
+        "Bu projede ortam yonetimi Docker uzerinden yapiliyor.\n"
+        "Once servisleri baslat:\n"
+        "  docker compose up -d\n"
+        "Sonra proje kokunde bagimliliklari yukle:\n"
+        "  pip install -r requirements.txt\n",
         file=sys.stderr,
     )
     sys.exit(1)

@@ -38,13 +38,6 @@ OUTPUT SCHEMA (respond with ONLY this JSON):
     {"hisse_kodu": "THYAO or null", "sirket_adi": "Company or institution name", "kisa_ozet": "One sentence"}
   ],
   "kaynaklar": ["source1 - date", "source2 - date"],
-  "seviyeler": {
-    "destek": ["level1", "level2"],
-    "direnc": ["level1", "level2"],
-    "hedef_fiyat": "price or null",
-    "zarar_kes": "price or null"
-  },
-  "oneri": "Buy / Sell / Hold / Neutral or null if not mentioned",
   "onemli_notlar": ["Notable point 1", "Notable point 2"],
   "yeterli_veri": true
 }
@@ -69,12 +62,6 @@ OUTPUT SCHEMA:
   "hisse_kodu": "Ticker symbol",
   "analiz_sayisi": 0,
   "kaynaklar": ["source - date"],
-  "konsensus_oneri": "Consensus: Buy / Sell / Hold / Karışık",
-  "seviyeler": {
-    "destek_araligi": "min - max",
-    "direnc_araligi": "min - max",
-    "hedef_fiyat_ort": "average or null"
-  },
   "onemli_gelismeler": ["Development 1", "Development 2"],
   "yeterli_veri": true
 }
@@ -88,13 +75,6 @@ NO_DATA_RESPONSE = """\
   "hisse_kodu": null,
   "sirket_haber_ozetleri": [],
   "kaynaklar": [],
-  "seviyeler": {
-    "destek": [],
-    "direnc": [],
-    "hedef_fiyat": null,
-    "zarar_kes": null
-  },
-  "oneri": null,
   "onemli_notlar": ["Lütfen önce /ingest komutunu çalıştırın veya yarın tekrar deneyin."],
   "yeterli_veri": false
 }
