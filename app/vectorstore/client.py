@@ -1,8 +1,8 @@
 """
-ChromaDB HTTP client — Docker container'a bağlanır.
+ChromaDB HTTP client — connects to the Docker container.
 
-ChromaDB, localhost:8001 portunda HTTP server olarak çalışmaktadır.
-Veri dizini: /home/furkan/Masaüstü/stock-rag-bot/chroma_data (volume mount)
+ChromaDB runs as an HTTP server on localhost:8001.
+Data directory: /home/furkan/Desktop/stock-rag-bot/chroma_data (volume mount)
 """
 from __future__ import annotations
 
@@ -13,31 +13,31 @@ from loguru import logger
 from app.config import get_settings
 
 _settings = get_settings()
-_client = None  # chromadb ClientAPI (HttpClient döner)
+_client = None  # chromadb ClientAPI (returns HttpClient)
 _collection = None
 
 
 def get_chroma_client():
-    """Docker ChromaDB HTTP server'a singleton bağlantı döndür."""
+    """Return a singleton connection to the Docker ChromaDB HTTP server."""
     global _client
     if _client is None:
         logger.info(
-            f"[chroma] HTTP client başlatılıyor: "
+            f"[chroma] Initializing HTTP client: "
             f"{_settings.chroma_host}:{_settings.chroma_port}"
         )
-        # Docker ChromaDB düz HTTP kullanır (TLS yok) — ssl=True olursa bağlantı başarısız olur
+        # Docker ChromaDB uses plain HTTP (no TLS) — ssl=True would fail the connection
         _client = chromadb.HttpClient(
             host=_settings.chroma_host,
             port=_settings.chroma_port,
             ssl=False,
             settings=ChromaSettings(anonymized_telemetry=False),
         )
-        logger.info("[chroma] HTTP client hazır")
+        logger.info("[chroma] HTTP client ready")
     return _client
 
 
 def get_chroma_collection():
-    """Singleton koleksiyonu döndür veya oluştur."""
+    """Return or create the singleton collection."""
     global _collection
     if _collection is None:
         client = get_chroma_client()
@@ -45,19 +45,19 @@ def get_chroma_collection():
             name=_settings.chroma_collection_name,
             metadata={
                 "hnsw:space": "cosine",
-                "description": "Finansal bülten chunk'ları — Ziraat & Halk Yatırım",
+                "description": "Financial bulletin chunks — Ziraat & Halk Yatirim",
             },
         )
         count = _collection.count()
         logger.info(
-            f"[chroma] Koleksiyon '{_settings.chroma_collection_name}' hazır — "
-            f"{count} döküman"
+            f"[chroma] Collection '{_settings.chroma_collection_name}' ready — "
+            f"{count} documents"
         )
     return _collection
 
 
 def get_collection_stats() -> dict:
-    """Aktif koleksiyonun temel istatistiklerini döndür."""
+    """Return basic stats for the active collection."""
     collection = get_chroma_collection()
     count = collection.count()
     return {
@@ -69,10 +69,10 @@ def get_collection_stats() -> dict:
 
 
 def reset_collection() -> None:
-    """Koleksiyonu sil ve yeniden oluştur — dikkatli kullan."""
+    """Delete and recreate the collection — use with caution."""
     global _collection
     client = get_chroma_client()
     client.delete_collection(_settings.chroma_collection_name)
     _collection = None
-    logger.warning(f"[chroma] Koleksiyon '{_settings.chroma_collection_name}' sıfırlandı")
+    logger.warning(f"[chroma] Collection '{_settings.chroma_collection_name}' was reset")
     get_chroma_collection()

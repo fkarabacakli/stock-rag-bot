@@ -21,7 +21,7 @@ from app.ingestion.scrapers.base import BulletinDocument
 
 _MIN_CHUNK_CHARS = 80
 _MAX_CHUNK_CHARS = 1500
-# Sabah şirket haberi gibi tek <p> + uzun metin: önce cümle sınırında parçala, sonra buffer'la
+# For single-<p> long content (e.g., Sabah company news): split by sentence first, then buffer
 _MAX_CHARS_PER_PARA_PIECE = 550
 _PARAGRAPH_BUFFER_MAX = 700
 
@@ -42,9 +42,9 @@ class Chunk:
         """Prepend section title + strong keys to boost semantic signal."""
         parts = []
         if self.section_title:
-            parts.append(f"Bölüm: {self.section_title}")
+            parts.append(f"Section: {self.section_title}")
         if self.strong_keys:
-            parts.append("Önemli: " + " | ".join(self.strong_keys))
+            parts.append("Key: " + " | ".join(self.strong_keys))
         parts.append(self.text)
         return "\n".join(parts)
 
@@ -100,8 +100,8 @@ def _split_long_text(text: str, max_chars: int = _MAX_CHUNK_CHARS) -> list[str]:
 
 def _stable_doc_id(doc: BulletinDocument) -> str:
     """
-    Aynı gün / aynı hisse kodunda birden fazla belgede Chroma ID çakışmasın.
-    url + başlık + kategori + içerik özeti hash ile benzersiz yapılır.
+    Prevent Chroma ID collisions across multiple documents on the same day/stock code.
+    Use a hash of url + title + category + content summary for uniqueness.
     """
     body = (doc.raw_html or "")[:6000]
     key = f"{doc.url}|{doc.title}|{doc.category}|{body}"
@@ -170,7 +170,7 @@ def chunk_document(doc: BulletinDocument) -> list[Chunk]:
         else:
             paragraphs_text = [_clean_text(p.get_text(separator=" ")) for p in paragraphs]
 
-        # Tek <p>'de 1000+ karakter (Ziraat şirket özeti): önce cümle bazlı parçala
+        # If a single <p> has 1000+ chars (Ziraat company summary), split by sentences first
         expanded_paras: list[str] = []
         for raw in paragraphs_text:
             if not raw or len(raw) < 20:

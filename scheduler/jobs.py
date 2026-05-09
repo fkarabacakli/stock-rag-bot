@@ -1,7 +1,7 @@
 """
-APScheduler iş tanımları.
+APScheduler iş tanimlari.
 
-İşler app/main.py'deki lifespan context'inde kayıt edilir.
+Işler app/main.py'deki lifespan context'inde kayit edilir.
 """
 from __future__ import annotations
 
@@ -11,15 +11,15 @@ from loguru import logger
 async def run_daily_ingestion() -> None:
     """
     Günlük bülten ingestion işi.
-    Her hafta içi sabah çalışır — scrape, chunk, embed ve ChromaDB'ye kaydet.
+    Her hafta içi sabah çalişir — scrape, chunk, embed ve ChromaDB'ye kaydet.
     """
-    logger.info("[scheduler] Günlük ingestion işi başlatılıyor...")
+    logger.info("[scheduler] Günlük ingestion işi başlatiliyor...")
     try:
         from app.ingestion.pipeline import run_ingestion_pipeline
 
         result = await run_ingestion_pipeline()
         logger.info(
-            f"[scheduler] Günlük ingestion tamamlandı — "
+            f"[scheduler] Günlük ingestion tamamlandi — "
             f"docs={result.total_documents}, "
             f"chunks={result.total_chunks}, "
             f"upserted={result.upserted}, "
@@ -27,6 +27,6 @@ async def run_daily_ingestion() -> None:
         )
         if result.errors:
             for err in result.errors:
-                logger.warning(f"[scheduler] Pipeline hatası: {err}")
+                logger.warning(f"[scheduler] Pipeline hatasi: {err}")
     except Exception as exc:
-        logger.error(f"[scheduler] Günlük ingestion başarısız: {exc}", exc_info=True)
+        logger.error(f"[scheduler] Günlük ingestion başarisiz: {exc}", exc_info=True)

@@ -1,15 +1,15 @@
 """
-LLM sistem promptları ve mesaj oluşturucuları.
+LLM system prompts and message builders.
 
-Strateji:
-  - Sistem promptu İngilizce yazılmıştır (model anlama kalitesi için)
-  - Model Türkçe yanıt vermesi için açıkça yönlendirilmiştir
-  - Çıktı yapılandırılmış JSON formatındadır (Telegram formatlamaya uygun)
+Strategy:
+  - The system prompt is written in English (for better model comprehension)
+  - The model is explicitly instructed to answer in Turkish
+  - Output is structured JSON (suitable for Telegram formatting)
 """
 from __future__ import annotations
 
-# NOT: JSON örneği süslü parantez içerir — ChatPromptTemplate ile kullanılmamalı
-# (LangChain şablonu {…} alanları sanır ve "Nested replacement fields" hatası verir).
+# NOTE: The JSON example contains curly braces — do not use with ChatPromptTemplate
+# (LangChain may treat {…} as template fields and raise "Nested replacement fields" errors).
 SYSTEM_PROMPT = """\
 You are an expert financial analysis assistant specializing in Turkish capital markets (BIST).
 You have access to research reports from major Turkish brokerages (including daily "Sabah Stratejisi" notes).
@@ -67,22 +67,22 @@ OUTPUT SCHEMA:
 }
 """
 
-# Haftalık şema da süslü parantezli — yalnızca SystemMessage ile kullan
+# Weekly schema also contains curly braces — use it only with SystemMessage
 
 NO_DATA_RESPONSE = """\
 {
-  "ozet": "Üzgünüm, bu hisse veya konu hakkında veri tabanımda yeterli analiz bulunamadı.",
+  "ozet": "Üzgünüm, bu hisse veya konu hakkinda veri tabanimda yeterli analiz bulunamadi.",
   "hisse_kodu": null,
   "sirket_haber_ozetleri": [],
   "kaynaklar": [],
-  "onemli_notlar": ["Lütfen önce /ingest komutunu çalıştırın veya yarın tekrar deneyin."],
+  "onemli_notlar": ["Lütfen önce /ingest komutunu çaliştirin veya yarin tekrar deneyin."],
   "yeterli_veri": false
 }
 """
 
 
 def build_user_message(query: str, context_chunks: list[str]) -> str:
-    """RAG context ve kullanıcı sorusunu birleştiren mesaj oluştur."""
+    """Build a message that combines RAG context and user query."""
     if not context_chunks:
         return "QUERY: " + query + "\n\nCONTEXT: No relevant documents found."
 
@@ -101,7 +101,7 @@ def build_user_message(query: str, context_chunks: list[str]) -> str:
 
 
 def build_weekly_user_message(query: str, context_chunks: list[str], stock_code: str) -> str:
-    """Haftalık özet sorgular için mesaj oluştur."""
+    """Build a message for weekly summary queries."""
     if not context_chunks:
         return "QUERY: " + query + "\n\nCONTEXT: No relevant documents found."
 

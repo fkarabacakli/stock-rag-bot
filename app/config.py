@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Ollama (Docker container — localhost:11434, RTX 5070)
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b"
-    # İsteğe bağlı vision modeli (Teknik Bülten görseli için, ör: llava:7b)
+    # Optional vision model (for Technical Bulletin images, e.g. llava:7b)
     ollama_vision_model: str = ""
     ollama_timeout: int = 120
 
@@ -27,13 +27,13 @@ class Settings(BaseSettings):
 
     # Embedding (host'ta SentenceTransformers + PyTorch)
     embedding_model: str = "BAAI/bge-m3"
-    # auto: CUDA varsa GPU, yoksa CPU | cuda | cpu — PyTorch'un CUDA build'i kurulu olmalı
+    # auto: use GPU if CUDA is available, otherwise CPU | cuda | cpu — requires a CUDA-enabled PyTorch build
     embedding_device: str = "auto"
 
     # RAG
     retriever_top_k: int = 6
     retriever_mmr_lambda: float = 0.6
-    # Sabah Stratejisi / “hangi şirketler” gibi geniş sorular — daha çok chunk, biraz daha çeşitlilik
+    # Broad Sabah Stratejisi questions (e.g. "which companies") — more chunks with slightly higher diversity
     rag_sabah_overview_top_k: int = 20
     rag_sabah_overview_mmr_lambda: float = 0.42
     rag_min_chunk_score: float = 0.12

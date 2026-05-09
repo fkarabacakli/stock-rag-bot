@@ -7,8 +7,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # Brokerage source options
 SOURCES = {
-    "ziraat_yatirim": "Ziraat Yatırım",
-    "halk_yatirim": "Halk Yatırım",
+    "ziraat_yatirim": "Ziraat Yatirim",
+    "halk_yatirim": "Halk Yatirim",
     "all": "Tüm Kurumlar",
 }
 
@@ -31,7 +31,7 @@ def source_selection_keyboard() -> InlineKeyboardMarkup:
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Hızlı hisseler + Sabah raporu ön ayarı."""
+    """Quick stocks plus a preset for the morning report."""
     base = stock_quick_access_keyboard()
     rows = list(base.inline_keyboard)
     rows.append(
@@ -68,7 +68,7 @@ def analysis_type_keyboard(stock_code: str) -> InlineKeyboardMarkup:
                 "Günlük Analiz", callback_data=f"gunluk:{stock_code}"
             ),
             InlineKeyboardButton(
-                "Haftalık Özet", callback_data=f"haftalik:{stock_code}"
+                "Haftalik Özet", callback_data=f"haftalik:{stock_code}"
             ),
         ],
         [InlineKeyboardButton("Kaynak Seç", callback_data=f"kaynak:{stock_code}")],

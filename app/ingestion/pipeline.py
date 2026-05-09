@@ -15,7 +15,7 @@ from app.ingestion.scrapers.base import BulletinDocument
 from app.ingestion.scrapers.ziraat_yatirim import ZiraatYatirimScraper
 from app.ingestion.table_parser import parse_and_format_tables
 
-# Aktif scraper'lar — yeni kurum eklendikçe buraya ekleyin
+# Active scrapers — add new brokerages here
 ACTIVE_SCRAPERS = [
     ZiraatYatirimScraper,
 ]

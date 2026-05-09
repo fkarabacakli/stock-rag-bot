@@ -5,13 +5,13 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-# ── Request Models ─────────────────────────────────────────────────────────────
+# ── Request Models ───────────────────────────────────────────────────────────
 
 class QueryRequest(BaseModel):
-    query: str = Field(..., min_length=3, max_length=500, description="Doğal dil sorusu")
-    stock_code: Optional[str] = Field(None, description="BIST kodu filtresi (ör. THYAO)")
-    source: Optional[str] = Field(None, description="Kaynak kurum filtresi")
-    days_back: int = Field(7, ge=1, le=90, description="Kaç gün geriye bakılsın")
+    query: str = Field(..., min_length=3, max_length=500, description="Natural language question")
+    stock_code: Optional[str] = Field(None, description="BIST ticker filter (e.g. THYAO)")
+    source: Optional[str] = Field(None, description="Source brokerage filter")
+    days_back: int = Field(7, ge=1, le=90, description="How many days back to search")
     model: Optional[str] = Field(None, description="Ollama model override")
 
     model_config = {"json_schema_extra": {
@@ -24,7 +24,7 @@ class QueryRequest(BaseModel):
 
 
 class WeeklyQueryRequest(BaseModel):
-    stock_code: str = Field(..., min_length=2, max_length=10, description="BIST kodu")
+    stock_code: str = Field(..., min_length=2, max_length=10, description="BIST ticker")
     model: Optional[str] = Field(None, description="Ollama model override")
 
 
@@ -34,7 +34,7 @@ class FreeQueryRequest(BaseModel):
     model: Optional[str] = None
 
 
-# ── Response Models ────────────────────────────────────────────────────────────
+# ── Response Models ──────────────────────────────────────────────────────────
 
 class SourceInfo(BaseModel):
     source: str

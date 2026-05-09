@@ -34,7 +34,7 @@ _scheduler = AsyncIOScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Stock RAG Bot başlatılıyor...")
+    logger.info("Stock RAG Bot başlatiliyor...")
     logger.info(
         f"ChromaDB: {settings.chroma_host}:{settings.chroma_port} | "
         f"Ollama: {settings.ollama_base_url} | "
@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
     )
     _scheduler.start()
     logger.info(
-        f"Zamanlayıcı başlatıldı — ingestion saati: "
+        f"Zamanlayici başlatildi — ingestion saati: "
         f"{settings.ingest_cron_hour:02d}:{settings.ingest_cron_minute:02d} (Pzt-Cum)"
     )
 
@@ -67,21 +67,21 @@ async def lifespan(app: FastAPI):
     await tg_app.initialize()
     await tg_app.start()
     await tg_app.updater.start_polling(drop_pending_updates=True)
-    logger.info("Telegram bot polling başlatıldı")
+    logger.info("Telegram bot polling başlatildi")
 
     yield
 
-    logger.info("Kapatılıyor...")
+    logger.info("Kapatiliyor...")
     await tg_app.updater.stop()
     await tg_app.stop()
     await tg_app.shutdown()
     _scheduler.shutdown(wait=False)
-    logger.info("Kapatma tamamlandı")
+    logger.info("Kapatma tamamlandi")
 
 
 app = FastAPI(
     title="Stock RAG Bot API",
-    description="Yerel LLM destekli finansal bülten RAG sistemi — Ziraat & Halk Yatırım",
+    description="Yerel LLM destekli finansal bülten RAG sistemi — Ziraat & Halk Yatirim",
     version="0.1.0",
     lifespan=lifespan,
 )

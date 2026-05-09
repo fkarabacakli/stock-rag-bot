@@ -19,11 +19,11 @@ router = APIRouter()
 _settings = get_settings()
 
 
-# ── Sağlık & İstatistik ────────────────────────────────────────────────────────
+# ── Health & Statistics ───────────────────────────────────────────────────────
 
 @router.get("/health", response_model=HealthResponse, tags=["System"])
 async def health_check():
-    """Ollama ve ChromaDB HTTP bağlantısını kontrol et."""
+    """Check Ollama and ChromaDB HTTP connectivity."""
     from app.llm.client import health_check as ollama_health
     from app.vectorstore.client import get_collection_stats
 
@@ -43,18 +43,18 @@ async def health_check():
 
 @router.get("/stats", response_model=StatsResponse, tags=["System"])
 async def collection_stats():
-    """ChromaDB koleksiyon istatistiklerini döndür."""
+    """Return ChromaDB collection statistics."""
     from app.vectorstore.client import get_collection_stats
     return StatsResponse(**get_collection_stats())
 
 
-# ── RAG Sorgu Uç Noktaları ─────────────────────────────────────────────────────
+# ── RAG Query Endpoints ───────────────────────────────────────────────────────
 
 @router.post("/query", response_model=QueryResponse, tags=["RAG"])
 async def query_analysis(req: QueryRequest):
     """
-    RAG tabanlı hisse analizi sorgusu.
-    Hisse kodu ve tarih aralığına göre filtreler, Türkçe yapılandırılmış yanıt üretir.
+    RAG-based stock analysis query.
+    Filters by stock code and date range, and returns a structured Turkish response.
     """
     from app.rag.chain import query_analysis as run_query
 
@@ -67,10 +67,10 @@ async def query_analysis(req: QueryRequest):
             model=req.model,
         )
     except Exception as exc:
-        logger.error(f"[routes] /query başarısız: {exc}", exc_info=True)
+        logger.error(f"[routes] /query failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"RAG zinciri hatası: {str(exc)}",
+            detail=f"RAG chain error: {str(exc)}",
         )
 
     return QueryResponse(
@@ -85,7 +85,7 @@ async def query_analysis(req: QueryRequest):
 
 @router.post("/query/weekly", response_model=QueryResponse, tags=["RAG"])
 async def query_weekly(req: WeeklyQueryRequest):
-    """Belirli bir BIST hissesi için haftalık çoklu kaynak özeti."""
+    """Weekly multi-source summary for a specific BIST stock."""
     from app.rag.chain import query_weekly as run_weekly
 
     try:
@@ -94,10 +94,10 @@ async def query_weekly(req: WeeklyQueryRequest):
             model=req.model,
         )
     except Exception as exc:
-        logger.error(f"[routes] /query/weekly başarısız: {exc}", exc_info=True)
+        logger.error(f"[routes] /query/weekly failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Haftalık RAG hatası: {str(exc)}",
+            detail=f"Weekly RAG error: {str(exc)}",
         )
 
     return QueryResponse(
@@ -112,7 +112,7 @@ async def query_weekly(req: WeeklyQueryRequest):
 
 @router.post("/query/free", response_model=QueryResponse, tags=["RAG"])
 async def free_query(req: FreeQueryRequest):
-    """Hisse kodu filtresi olmadan serbest RAG sorgusu."""
+    """Free-form RAG query without stock-code filtering."""
     from app.rag.chain import free_query as run_free
 
     try:
@@ -122,10 +122,10 @@ async def free_query(req: FreeQueryRequest):
             model=req.model,
         )
     except Exception as exc:
-        logger.error(f"[routes] /query/free başarısız: {exc}", exc_info=True)
+        logger.error(f"[routes] /query/free failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Serbest sorgu hatası: {str(exc)}",
+            detail=f"Free query error: {str(exc)}",
         )
 
     return QueryResponse(
@@ -143,15 +143,15 @@ async def free_query(req: FreeQueryRequest):
 @router.post("/ingest/trigger", response_model=IngestTriggerResponse, tags=["Ingestion"])
 async def trigger_ingestion(background_tasks: BackgroundTasks):
     """
-    Ingestion pipeline'ı arka planda başlat.
-    Hemen döner — ilerleme için /api/v1/stats kullanın.
+    Start the ingestion pipeline in the background.
+    Returns immediately — use /api/v1/stats to track progress.
     """
     from app.ingestion.pipeline import run_ingestion_pipeline
 
     async def _run():
         result = await run_ingestion_pipeline()
         logger.info(
-            f"[routes] Manuel ingestion tamamlandı — "
+            f"[routes] Manual ingestion completed — "
             f"docs={result.total_documents}, upserted={result.upserted}"
         )
 
@@ -159,15 +159,15 @@ async def trigger_ingestion(background_tasks: BackgroundTasks):
 
     return IngestTriggerResponse(
         success=True,
-        message="Ingestion pipeline arka planda başlatıldı. İlerleme için /api/v1/stats kontrol edin.",
+        message="Ingestion pipeline started in background. Check /api/v1/stats for progress.",
     )
 
 
 @router.post("/ingest/trigger/sync", response_model=IngestTriggerResponse, tags=["Ingestion"])
 async def trigger_ingestion_sync():
     """
-    Ingestion pipeline'ı senkron olarak çalıştır ve tamamlanmasını bekle.
-    Test için uygundur; production'da async endpoint tercih edilir.
+    Run the ingestion pipeline synchronously and wait for completion.
+    Useful for testing; async endpoint is preferred in production.
     """
     from app.ingestion.pipeline import run_ingestion_pipeline
 
@@ -175,14 +175,14 @@ async def trigger_ingestion_sync():
         result = await run_ingestion_pipeline()
         return IngestTriggerResponse(
             success=len(result.errors) == 0,
-            message="Ingestion tamamlandı",
+            message="Ingestion completed",
             total_documents=result.total_documents,
             total_chunks=result.total_chunks,
             upserted=result.upserted,
             errors=result.errors,
         )
     except Exception as exc:
-        logger.error(f"[routes] Senkron ingestion başarısız: {exc}", exc_info=True)
+        logger.error(f"[routes] Synchronous ingestion failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),

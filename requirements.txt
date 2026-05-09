@@ -5,14 +5,14 @@ uvicorn[standard]>=0.32.1,<1
 # Telegram Bot
 python-telegram-bot>=21.7,<22
 
-# Vector Database — Docker Chroma (chromadb/chroma:latest) ile uyumlu olması için 1.x gerekir (REST API v2).
-# 0.5.x istemcisi eski v1 endpoint'lerini kullanır; sunucu v2 döner → bağlantı / health hataları.
+# Vector Database — requires 1.x for compatibility with Docker Chroma (chromadb/chroma:latest, REST API v2).
+# The 0.5.x client uses old v1 endpoints; server responds with v2 -> connection/health failures.
 chromadb>=1.0.0,<2
 
-# Embeddings (host'ta çalışır — Docker'a gitmez)
+# Embeddings (runs on host — does not run in Docker)
 sentence-transformers>=3.3.1,<4
 
-# LangChain — sadece Ollama inference için
+# LangChain — used only for Ollama inference
 langchain>=0.3.0
 langchain-ollama>=0.2.0
 langchain-core>=0.3.0

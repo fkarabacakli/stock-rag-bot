@@ -17,7 +17,7 @@ settings = get_settings()
 
 @dataclass
 class BulletinDocument:
-    """Bir aracı kurumun web sitesinden kazınan tek bir bülten belgesi."""
+    """Single bulletin document scraped from a brokerage website."""
 
     title: str
     stock_code: str

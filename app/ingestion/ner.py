@@ -18,7 +18,7 @@ import re
 
 # ── Patterns ───────────────────────────────────────────────────────────────────
 
-# "(THYAO)" or "(MARGUN, Nötr)"
+# "(THYAO)" or "(MARGUN, Notr)"
 _RE_PAREN = re.compile(r"\(([A-Z]{3,6})[,\s\)]")
 
 # "THYAO:" or "MARGUN -" at the very start of a line
@@ -40,7 +40,7 @@ _BLACKLIST: frozenset[str] = frozenset({
     "TCMB", "PPK", "BDDK", "SPK",
     "PMI", "CPI", "PPI", "PCE", "ISM", "ADP", "MBA",
     "TUFE", "UFE", "GSYH", "TUIK", "KDV", "OTV",
-    "TÜFE", "ÜFE", "GSYİH", "TÜİK",
+    "TÜFE", "ÜFE", "GSYIH", "TÜIK",
     # Generic financial abbreviations
     "CEO", "CFO", "COO", "CRO", "IPO",
     "YOY", "QOQ", "TTM", "EPS", "ROE", "ROA", "NPL",
@@ -49,7 +49,7 @@ _BLACKLIST: frozenset[str] = frozenset({
     # Misc country / region codes
     "TR", "TUR", "EU", "UK", "ABD",
     # Common false positives seen in Halk bulletins
-    "BIST", "BİST", "VERI", "TABLO",
+    "BIST", "BIST", "VERI", "TABLO",
 })
 
 
@@ -62,7 +62,7 @@ def extract_tickers(text: str, scan_chars: int = 600) -> list[str]:
 
     Example
     -------
-    >>> extract_tickers("THYAO (THYAO): Yolcu sayısı artışı. GARAN da etkilendi.")
+    >>> extract_tickers("THYAO (THYAO): Yolcu sayisi artişi. GARAN da etkilendi.")
     ['THYAO', 'GARAN']
     """
     snippet = text[:scan_chars]

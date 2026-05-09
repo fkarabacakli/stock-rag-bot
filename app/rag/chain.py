@@ -1,14 +1,14 @@
 """
-RAG zinciri: retrieve → context augment → LangChain ChatOllama → JSON parse.
+RAG chain: retrieve → context augment → LangChain ChatOllama → JSON parse.
 
-Hibrit mimari:
-  - Retrieval: özel MMR tabanlı retriever (SentenceTransformers + ChromaDB HTTP)
+Hybrid architecture:
+  - Retrieval: custom MMR-based retriever (SentenceTransformers + ChromaDB HTTP)
   - Generation: LangChain ChatOllama (localhost:11434, qwen2.5:7b, RTX 5070)
 
-İki ana giriş noktası:
-  - query_analysis()  → tek hisse analizi
-  - query_weekly()    → haftalık çoklu kaynak özeti
-  - free_query()      → serbest RAG sorgusu
+Main entry points:
+  - query_analysis()  → single-stock analysis
+  - query_weekly()    → weekly multi-source summary
+  - free_query()      → free-form RAG query
 """
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def _apply_min_score(chunks: list[RetrievedChunk], min_score: float) -> list[Ret
     best = max(c.score for c in chunks)
     logger.warning(
         f"[rag] Skor eşiği {min_score} üstü yok (en iyi {best:.3f}) — "
-        f"{len(chunks)} chunk yine de kullanılıyor"
+        f"{len(chunks)} chunk yine de kullaniliyor"
     )
     return sorted(chunks, key=lambda c: c.score, reverse=True)
 
@@ -80,7 +80,7 @@ class RAGResponse:
 
 
 def _format_chunk_for_context(chunk: RetrievedChunk) -> str:
-    """Chunk'ı LLM context metnine dönüştür."""
+    """Convert a chunk into LLM context text."""
     meta = chunk.metadata
     header_parts = [
         f"Source: {meta.get('source', 'unknown')}",
@@ -100,7 +100,7 @@ def _format_chunk_for_context(chunk: RetrievedChunk) -> str:
 
 
 def _chunks_to_sources(chunks: list[RetrievedChunk]) -> list[dict]:
-    """Chunk'lardan kaynak atıf listesi oluştur."""
+    """Build a source citation list from chunks."""
     seen: set[tuple] = set()
     sources: list[dict] = []
     for c in chunks:
@@ -140,7 +140,7 @@ def _apply_sabah_overview_fallback(parsed: dict, chunks: list[RetrievedChunk]) -
         if short_text:
             short_text = short_text[:220].rstrip(" .,:;") + "."
         else:
-            short_text = "Bu kayıt ilgili bültende öne çıkan başlıklar arasında yer alıyor."
+            short_text = "Bu kayit ilgili bültende öne çikan başliklar arasinda yer aliyor."
 
         items.append(
             {
@@ -155,10 +155,10 @@ def _apply_sabah_overview_fallback(parsed: dict, chunks: list[RetrievedChunk]) -
     if items:
         first_labels = []
         for it in items[:5]:
-            label = it["hisse_kodu"] or it["sirket_adi"] or "Kayıt"
+            label = it["hisse_kodu"] or it["sirket_adi"] or "Kayit"
             first_labels.append(str(label))
         parsed["ozet"] = (
-            f"Sabah bültenlerinde öne çıkan {len(items)} şirket/kurum bulundu: "
+            f"Sabah bültenlerinde öne çikan {len(items)} şirket/kurum bulundu: "
             + ", ".join(first_labels)
             + "."
         )
@@ -182,22 +182,22 @@ async def query_analysis(
     sabah_overview: bool = False,
 ) -> RAGResponse:
     """
-    RAG tabanlı hisse analizi sorgusu.
+    RAG-based stock analysis query.
 
-    Akış:
-      1. ChromaDB'den alakalı chunk'ları getir (MMR re-rank)
-      2. ChatOllama + sistem/kullanıcı mesajları → JSON
-      3. JSON çıktıyı ayrıştır
+    Flow:
+      1. Retrieve relevant chunks from ChromaDB (MMR re-rank)
+      2. ChatOllama + system/user messages → JSON
+      3. Parse the JSON output
 
     Args:
-        query:      Doğal dil sorusu
-        stock_code: Filtre için BIST kodu (ör. "THYAO")
-        source:     Filtre için kaynak kurum (ör. "ziraat_yatirim")
-        days_back:  Kaç gün geriye bakılsın
+        query:      Natural language query
+        stock_code: Optional BIST ticker filter (e.g. "THYAO")
+        source:     Optional brokerage filter (e.g. "ziraat_yatirim")
+        days_back:  How many days back to search
         model:      Ollama model override
 
     Returns:
-        RAGResponse — JSON sonuç, kaynaklar ve meta veriler
+        RAGResponse — JSON result, sources, and metadata
     """
     settings = get_settings()
     llm = get_llm(model)
@@ -205,7 +205,7 @@ async def query_analysis(
     retrieve_query = query
     if sabah_overview:
         retrieve_query = (
-            f"{query} Sabah Stratejisi Ziraat Yatırım şirket haberleri "
+            f"{query} Sabah Stratejisi Ziraat Yatirim şirket haberleri "
             f"sektör haberleri günlük bülten"
         )
 
@@ -228,7 +228,7 @@ async def query_analysis(
     )
 
     if not chunks:
-        logger.warning("[rag] İlgili chunk bulunamadı — NO_DATA_RESPONSE döndürülüyor")
+        logger.warning("[rag] No relevant chunks found — returning NO_DATA_RESPONSE")
         return RAGResponse(
             raw_json=json.loads(NO_DATA_RESPONSE),
             sources=[],
@@ -240,7 +240,7 @@ async def query_analysis(
     context_texts = [_format_chunk_for_context(c) for c in chunks]
     user_message = build_user_message(query, context_texts)
 
-    logger.debug(f"[rag] LLM çağrılıyor → model={llm.model}")
+    logger.debug(f"[rag] Calling LLM -> model={llm.model}")
     msg_out = await llm.ainvoke(
         [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_message)]
     )
@@ -267,9 +267,9 @@ async def query_weekly(
     model: Optional[str] = None,
 ) -> RAGResponse:
     """
-    Belirli bir hisse için haftalık çoklu kaynak özeti.
+    Weekly multi-source summary for a specific stock.
 
-    Tüm kurumların son 7 günlük raporlarını sentezler.
+    Synthesizes last 7-day reports across all brokerages.
     """
     from app.config import get_settings
     settings = get_settings()
@@ -327,8 +327,8 @@ async def free_query(
     source: Optional[str] = None,
 ) -> RAGResponse:
     """
-    Hisse kodu filtresi olmadan serbest RAG sorgusu.
-    Telegram serbest metin mesajları için kullanılır.
+    Free-form RAG query without a stock-code filter.
+    Used for Telegram free-text messages.
     """
     overview = _sabah_overview_intent(query)
     effective_days = max(days_back, 7) if overview else days_back

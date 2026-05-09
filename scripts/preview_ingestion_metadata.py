@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Manuel metadata / chunk kontrolü — Chroma veya embedding çalıştırmaz.
+Manual metadata/chunk inspection — does not run Chroma or embeddings.
 
-Proje kökünden:
+From the project root:
   python scripts/preview_ingestion_metadata.py
   python scripts/preview_ingestion_metadata.py --scraper ziraat --limit 3
-  python scripts/preview_ingestion_metadata.py --out ./preview/son_inceleme.json
+  python scripts/preview_ingestion_metadata.py --out ./preview/latest_review.json
   python scripts/preview_ingestion_metadata.py --full-text --limit 1
 
-Çıktı: metadata + chunk alanları; --full-text ile raw_html, text, embedding_text kesilmeden.
+Output: metadata + chunk fields; with --full-text, raw_html/text/embedding_text are not truncated.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ try:
     from app.ingestion.chunker import chunk_document
 except ModuleNotFoundError as exc:
     print(
-        f"\n[preview] Modül bulunamadı: {exc.name}\n"
+        f"\n[preview] Modül bulunamadi: {exc.name}\n"
         "Bu projede ortam yonetimi Docker uzerinden yapiliyor.\n"
         "Once servisleri baslat:\n"
         "  docker compose up -d\n"
@@ -41,14 +41,14 @@ from app.ingestion.pipeline import ACTIVE_SCRAPERS
 from app.ingestion.scrapers.base import BulletinDocument
 from app.ingestion.scrapers.ziraat_yatirim import ZiraatYatirimScraper
 
-# Önizleme: --scraper ziraat | all (all = pipeline'daki tüm ACTIVE_SCRAPERS)
+# Preview: --scraper ziraat | all (all = every ACTIVE_SCRAPER in pipeline)
 SCRAPER_BY_NAME = {"ziraat": ZiraatYatirimScraper}
 
 
 def _truncate(s: str, n: int) -> str:
     if len(s) <= n:
         return s
-    return s[:n] + f"... [{len(s)} karakter]"
+    return s[:n] + f"... [{len(s)} chars]"
 
 
 def _doc_to_preview_dict(
@@ -105,52 +105,52 @@ async def _fetch_docs(which: str) -> list[BulletinDocument]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Scrape sonrası metadata ve chunk önizlemesi (manuel kontrol)"
+        description="Metadata and chunk preview after scraping (manual inspection)"
     )
     parser.add_argument(
         "--scraper",
         choices=["all", "ziraat"],
         default="all",
-        help="all = pipeline ACTIVE_SCRAPERS; şimdilik yalnızca Ziraat",
+        help="all = pipeline ACTIVE_SCRAPERS; currently only Ziraat",
     )
-    parser.add_argument("--limit", type=int, default=0, help="İlk N belge (0=tümü)")
+    parser.add_argument("--limit", type=int, default=0, help="First N documents (0=all)")
     parser.add_argument(
         "--out",
         type=Path,
         default=None,
-        help="JSON çıktı (varsayılan: preview/metadata_preview_<bugün>.json)",
+        help="JSON output (default: preview/metadata_preview_<today>.json)",
     )
     parser.add_argument(
         "--html-preview",
         type=int,
         default=600,
-        help="Belge HTML önizleme karakter sayısı",
+        help="Document HTML preview character count",
     )
     parser.add_argument(
         "--text-preview",
         type=int,
         default=500,
-        help="Chunk metin önizleme karakter sayısı",
+        help="Chunk text preview character count",
     )
     parser.add_argument(
         "--dump-html-dir",
         type=Path,
         default=None,
-        help="İsteğe bağlı: her belgenin tam HTML'ini bu klasöre yaz",
+        help="Optional: write full HTML of each document into this directory",
     )
     parser.add_argument(
         "--full-text",
         action="store_true",
-        help="JSON'da raw_html, chunk text ve embedding_text tam (kesme yok)",
+        help="In JSON, keep raw_html/chunk text/embedding_text full (no truncation)",
     )
     args = parser.parse_args()
 
     async def run() -> Path:
-        print("[preview] Kazıma başlıyor...", flush=True)
+        print("[preview] Scraping started...", flush=True)
         docs = await _fetch_docs(args.scraper)
         if args.limit > 0:
             docs = docs[: args.limit]
-        print(f"[preview] {len(docs)} belge alındı.", flush=True)
+        print(f"[preview] {len(docs)} documents fetched.", flush=True)
 
         out_path = args.out
         if out_path is None:
@@ -186,7 +186,7 @@ def main() -> None:
 
             payload_docs.append(entry)
 
-            # Konsola kısa özet
+            # Short console summary
             print(
                 f"\n--- [{i}] {doc.category} | {doc.stock_code} | chunks={len(chunks)} ---",
                 flush=True,
@@ -197,7 +197,7 @@ def main() -> None:
             for j, ch in enumerate(chunks[:3]):
                 print(f"    chunk[{j}] id={ch.chromadb_id()} section={ch.section_title!r}", flush=True)
             if len(chunks) > 3:
-                print(f"    ... +{len(chunks) - 3} chunk daha", flush=True)
+                print(f"    ... +{len(chunks) - 3} more chunks", flush=True)
 
         payload = {
             "generated_at": date.today().isoformat(),
@@ -212,10 +212,10 @@ def main() -> None:
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        print(f"\n[preview] Tam JSON yazıldı: {out_path}", flush=True)
+        print(f"\n[preview] Tam JSON yazildi: {out_path}", flush=True)
         if args.full_text:
             print(
-                "[preview] --full-text: dosya büyük olabilir; terminalde jq/less ile aç.",
+                "[preview] --full-text: file can be large; open in terminal with jq/less.",
                 flush=True,
             )
         return out_path

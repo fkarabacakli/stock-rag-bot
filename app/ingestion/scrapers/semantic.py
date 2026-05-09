@@ -6,7 +6,7 @@ import re
 
 # Human-readable brokerage names for vector metadata / API consumers
 KURUM_BY_SOURCE: dict[str, str] = {
-    "ziraat_yatirim": "Ziraat Yatırım",
+    "ziraat_yatirim": "Ziraat Yatirim",
 }
 
 
@@ -19,9 +19,9 @@ def slug_category_tr(label: str) -> str:
         "Temel Analiz": "Temel_Analiz",
         "Strateji": "Strateji",
         "Günlük Bülten": "Gunluk_Bulten",
-        "Haftalık Bülten": "Haftalik_Bulten",
+        "Haftalik Bülten": "Haftalik_Bulten",
         "Model Portföy": "Model_Portfoy",
-        "Yatırım Tavsiyesi": "Yatirim_Tavsiyesi",
+        "Yatirim Tavsiyesi": "Yatirim_Tavsiyesi",
         "Hedef Fiyat Revizyonu": "Hedef_Fiyat_Revizyonu",
     }
     if s in mapping:
@@ -44,7 +44,7 @@ _TICKER_IN_PARENS = re.compile(r"\b([A-Z]{3,5})\b")
 
 
 def ticker_from_parenthetical(paren: str) -> str:
-    """First plausible BIST ticker inside parentheses segment, e.g. 'ARCLK, Nötr'."""
+    """First plausible BIST ticker inside parentheses segment, e.g. 'ARCLK, Notr'."""
     paren_u = paren.upper().strip()
     first = paren_u.split(",")[0].strip()
     if re.fullmatch(r"[A-Z]{3,5}", first):

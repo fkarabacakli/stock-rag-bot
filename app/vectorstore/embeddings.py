@@ -36,8 +36,8 @@ def _resolve_torch_device() -> str:
         if torch.cuda.is_available():
             return "cuda"
         logger.warning(
-            "[embeddings] embedding_device=cuda ama torch.cuda.is_available()=False "
-            "(PyTorch CPU paketi veya sürücü yok) — CPU kullanılıyor"
+            "[embeddings] embedding_device=cuda but torch.cuda.is_available()=False "
+            "(PyTorch CPU package or driver missing) — using CPU"
         )
         return "cpu"
     # auto

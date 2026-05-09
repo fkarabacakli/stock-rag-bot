@@ -1,13 +1,13 @@
 """
-Ziraat Yatırım bulletin scraper.
+Ziraat Yatirim bulletin scraper.
 
 Primary: Sabah Stratejisi (daily morning strategy note)
   https://www.ziraatyatirim.com.tr/tr/sabah-stratejisi
 
 Content lives under #ContentSection > .sub-page-content (not the old hisse-raporlari list layout).
 
-Şirket raporları ayrı bir sayfa ve seçiciler gerektirir; gürültüyü önlemek için yalnızca
-Sabah Stratejisi tek bir BulletinDocument olarak alınır.
+Company reports require a separate page/selectors; to avoid noise, we only ingest
+Sabah Stratejisi as a single BulletinDocument.
 """
 from __future__ import annotations
 
@@ -39,20 +39,20 @@ _SABAH_DATE_RE = re.compile(
 )
 _GENERIC_DMY_RE = re.compile(r"(\d{1,2})\s*[/.\s]+\s*(\d{1,2})\s*[/.\s]+\s*(\d{4})")
 _TICKER_RE = re.compile(r"\b[A-Z]{3,5}\b")
-# "Arçelik (ARCLK, Nötr): ..." — keep full parenthetical (rating) in metin
+# "Arcelik (ARCLK, Notr): ..." — keep full parenthetical (rating) in metin
 _COMPANY_ITEM_RE = re.compile(
     r"^\s*(?P<company>.+?)\s*\((?P<paren>[^)]+)\)\s*:\s*(?P<body>.+)$",
     re.DOTALL,
 )
-# "Ziraat Bankası: ..." / "SPK: ..." — parantez içinde ticker yok
+# "Ziraat Bankasi: ..." / "SPK: ..." — no ticker in parentheses
 _COMPANY_COLON_NO_TICKER_RE = re.compile(
     r"^\s*(?P<company>"
-    r"[A-ZÇĞİÖŞÜİ][\w'.-]*(?:\s+[\w'.-]+)*"  # İş GYO, Ziraat Bankası
-    r"|[A-ZÇĞİÖŞÜİ]{2,8}"  # kısa kısaltma: SPK, TCMB
+    r"[A-ZÇĞIÖŞÜI][\w'.-]*(?:\s+[\w'.-]+)*"  # Is GYO, Ziraat Bankasi
+    r"|[A-ZÇĞIÖŞÜI]{2,8}"  # short abbreviation: SPK, TCMB
     r")\s*:\s*(?P<body>\S.+)$",
     re.DOTALL,
 )
-# "Bu çeyrekte:", "Diğer taraftan:" gibi cümle devamlarını şirket sanma
+# Do not treat sentence continuations like "Bu ceyrekte:" as company names
 _BAD_STANDALONE_COMPANY_START = frozenset(
     {
         "bu",
@@ -60,21 +60,21 @@ _BAD_STANDALONE_COMPANY_START = frozenset(
         "bunu",
         "böylece",
         "böylelikle",
-        "ayrıca",
+        "ayrica",
         "diğer",
         "öte",
         "yani",
         "neticede",
         "sonuçta",
-        "dolayısıyla",
+        "dolayisiyla",
         "özetle",
         "nihayetinde",
         "bununla",
         "bundan",
         "çoğu",
-        "bazı",
+        "bazi",
         "şöyle",
-        "ayrı",
+        "ayri",
         "ilk",
         "ikinci",
         "üçüncü",
@@ -176,7 +176,7 @@ def _extract_mentioned_tickers(raw_html: str) -> list[str]:
 
 
 def _ascii_fold(s: str) -> str:
-    """Lowercase + strip combining marks so 'ŞİRKET' matches 'sirket'."""
+    """Lowercase + strip combining marks so 'SIRKET' matches 'sirket'."""
     s = unicodedata.normalize("NFKD", s)
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
     return s.casefold()
@@ -207,8 +207,8 @@ def _extract_section_records(raw_fragment: str) -> list[dict]:
 
     Main target: keep company name + ticker + analysis text together.
     Ziraat splits long items across multiple <p> siblings; we merge those
-    into a single record until the next "Şirket (TICKER, ...): ..." veya
-    "Kurum Adı: ..." (tickersız) satırı.
+    into a single record until the next "Sirket (TICKER, ...): ..." or
+    "Kurum Adi: ..." (without ticker) line.
     """
     soup = BeautifulSoup(raw_fragment, "lxml")
     records: list[dict] = []
@@ -345,10 +345,10 @@ class ZiraatYatirimScraper(BaseScraper):
             haftalik_docs = await self._parse_haftalik_teknik_hisse_onerileri(html)
             documents.extend(haftalik_docs)
             logger.info(
-                f"[{self.SOURCE_NAME}] Haftalık Teknik Hisse Önerileri: {len(haftalik_docs)} document(s)"
+                f"[{self.SOURCE_NAME}] Haftalik Teknik Hisse Önerileri: {len(haftalik_docs)} document(s)"
             )
         except Exception as exc:
-            logger.error(f"[{self.SOURCE_NAME}] Haftalık Teknik Hisse Önerileri fetch failed: {exc}")
+            logger.error(f"[{self.SOURCE_NAME}] Haftalik Teknik Hisse Önerileri fetch failed: {exc}")
 
         return documents
 
@@ -418,7 +418,7 @@ class ZiraatYatirimScraper(BaseScraper):
                     )
                 return cleaned
         except Exception as exc:
-            logger.warning(f"[{self.SOURCE_NAME}] Teknik görsel OCR/VLM parse başarısız: {exc}")
+            logger.warning(f"[{self.SOURCE_NAME}] Teknik görsel OCR/VLM parse başarisiz: {exc}")
         return []
 
     async def _parse_gunluk_teknik_bulten(self, html: str) -> list[BulletinDocument]:
@@ -440,7 +440,7 @@ class ZiraatYatirimScraper(BaseScraper):
                 break
 
         if not image_url:
-            logger.warning(f"[{self.SOURCE_NAME}] Günlük Teknik Bülten görseli bulunamadı")
+            logger.warning(f"[{self.SOURCE_NAME}] Günlük Teknik Bülten görseli bulunamadi")
             return []
 
         records = await self._extract_prices_from_teknik_image(image_url)
@@ -449,7 +449,7 @@ class ZiraatYatirimScraper(BaseScraper):
         if not records:
             # Fallback: keep a general document with image link for later processing.
             metin = (
-                f"{title}. Teknik seviyeler görselde yer alıyor. "
+                f"{title}. Teknik seviyeler görselde yer aliyor. "
                 f"Görsel URL: {image_url}"
             )
             docs.append(
@@ -506,7 +506,7 @@ class ZiraatYatirimScraper(BaseScraper):
 
     async def _parse_haftalik_teknik_hisse_onerileri(self, html: str) -> list[BulletinDocument]:
         """
-        Parse 'Haftalık Teknik Hisse Önerileri' page.
+        Parse 'Haftalik Teknik Hisse Önerileri' page.
         Irregular publication; same editor-image pattern as daily technical bulletin.
         """
         soup = BeautifulSoup(html, "lxml")
@@ -518,7 +518,7 @@ class ZiraatYatirimScraper(BaseScraper):
         title = (
             clean_ws(title_h3.get_text(" ", strip=True))
             if title_h3
-            else "Haftalık Teknik Hisse Önerileri"
+            else "Haftalik Teknik Hisse Önerileri"
         )
         doc_date = _parse_any_date_from_html(section) or date.today()
 
@@ -530,7 +530,7 @@ class ZiraatYatirimScraper(BaseScraper):
                 break
 
         if not image_url:
-            logger.warning(f"[{self.SOURCE_NAME}] Haftalık Teknik Hisse Önerileri görseli bulunamadı")
+            logger.warning(f"[{self.SOURCE_NAME}] Haftalik Teknik Hisse Önerileri görseli bulunamadi")
             return []
 
         records = await self._extract_prices_from_teknik_image(image_url)
@@ -538,7 +538,7 @@ class ZiraatYatirimScraper(BaseScraper):
 
         if not records:
             metin = (
-                f"{title}. Haftalık teknik seviyeler görselde yer alıyor. "
+                f"{title}. Haftalik teknik seviyeler görselde yer aliyor. "
                 f"Görsel URL: {image_url}"
             )
             docs.append(
@@ -564,7 +564,7 @@ class ZiraatYatirimScraper(BaseScraper):
         for idx, rec in enumerate(records):
             hisse = rec.get("hisse", "GENEL")
             metin = (
-                f"{hisse} için haftalık teknik seviyeler: "
+                f"{hisse} için haftalik teknik seviyeler: "
                 f"beklenen_fiyat={rec.get('beklenen_fiyat')}, "
                 f"destek={rec.get('destek')}, "
                 f"direnc={rec.get('direnc')}, "
@@ -660,7 +660,7 @@ class ZiraatYatirimScraper(BaseScraper):
                 )
             return rows
         except Exception as exc:
-            logger.warning(f"[{self.SOURCE_NAME}] Portföy görsel OCR/VLM parse başarısız: {exc}")
+            logger.warning(f"[{self.SOURCE_NAME}] Portföy görsel OCR/VLM parse başarisiz: {exc}")
             return []
 
     async def _parse_hisse_oneri_portfoyu(self, html: str) -> list[BulletinDocument]:
@@ -684,7 +684,7 @@ class ZiraatYatirimScraper(BaseScraper):
                 image_url = src if src.startswith("http") else self.BASE_URL + src
                 break
         if not image_url:
-            logger.warning(f"[{self.SOURCE_NAME}] Hisse Öneri Portföyü görseli bulunamadı")
+            logger.warning(f"[{self.SOURCE_NAME}] Hisse Öneri Portföyü görseli bulunamadi")
             return []
 
         rows = await self._extract_rows_from_portfoy_image(image_url)
@@ -692,7 +692,7 @@ class ZiraatYatirimScraper(BaseScraper):
 
         if not rows:
             metin = (
-                f"{title}. Portföy detayları görselde yer alıyor. "
+                f"{title}. Portföy detaylari görselde yer aliyor. "
                 f"Görsel URL: {image_url}"
             )
             docs.append(
@@ -754,7 +754,7 @@ class ZiraatYatirimScraper(BaseScraper):
         raw_fragment, title = _extract_main_content_html(soup)
         if not raw_fragment or len(raw_fragment) < 200:
             logger.warning(
-                f"[{self.SOURCE_NAME}] Sabah Stratejisi: içerik bloğu çok kısa veya bulunamadı "
+                f"[{self.SOURCE_NAME}] Sabah Stratejisi: içerik bloğu çok kisa veya bulunamadi "
                 f"(#ContentSection / .sub-page-content kontrol edin)"
             )
             return []
@@ -804,7 +804,7 @@ class ZiraatYatirimScraper(BaseScraper):
             elif hisse == "GENEL":
                 mentioned_for_doc = ",".join(mentioned_tickers)
             else:
-                # Tickersız kurum (ör. Ziraat Bankası:) — tüm bülten ticker listesini yapıştırma
+                # Tickerless institution (e.g., Ziraat Bankasi:) — do not copy full bulletin ticker list
                 mentioned_for_doc = ""
 
             documents.append(

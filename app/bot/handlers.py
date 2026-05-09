@@ -45,27 +45,27 @@ _SESSION_MODEL_KEY = "selected_model"
 _SESSION_SOURCE_KEY = "selected_source"
 
 WELCOME_MESSAGE = (
-    "Merhaba! Ben *Finansal RAG Asistanınızım*.\n\n"
-    "Ziraat Yatırım bültenlerini (Sabah Stratejisi dahil) analiz ediyorum.\n\n"
+    "Merhaba! Ben *Finansal RAG Asistaninizim*.\n\n"
+    "Ziraat Yatirim bültenlerini (Sabah Stratejisi dahil) analiz ediyorum.\n\n"
     "*Komutlar:*\n"
     "/analiz THYAO — Hisse analizi\n"
-    "/haftalik GARAN — Haftalık özet\n"
+    "/haftalik GARAN — Haftalik özet\n"
     "/kurumlar — Kaynak kurum seçimi\n"
     "/model — LLM model seçimi\n"
     "/durum — Sistem durumu\n\n"
-    "Sabah raporunda *hangi şirketler* var, *bugün hangi gelişmeler* var gibi soruları "
-    "doğrudan yazabilir veya aşağıdaki *Bugün hangi şirketler?* düğmesine basabilirsiniz."
+    "Sabah raporunda *hangi şirketler* var, *bugün hangi gelişmeler* var gibi sorulari "
+    "doğrudan yazabilir veya aşağidaki *Bugün hangi şirketler?* düğmesine basabilirsiniz."
 )
 
 HELP_INTENT_MESSAGE = (
     "Merhaba! Yapabileceklerim:\n\n"
     "• /analiz THYAO — Hisse analizi\n"
-    "• /haftalik GARAN — Haftalık özet\n"
+    "• /haftalik GARAN — Haftalik özet\n"
     "• /kurumlar — Kaynak kurum seçimi\n"
     "• /model — Model seçimi\n"
     "• /durum — Sistem durumu\n"
     "• /ingest — Manuel veri toplama\n\n"
-    "Ayrıca serbest metin de yazabilirsiniz:\n"
+    "Ayrica serbest metin de yazabilirsiniz:\n"
     "• 'Bugün sabah stratejisinde hangi şirketler var?'\n"
     "• 'THYAO için bu haftaki destek direnç seviyeleri neler?'"
 )
@@ -78,10 +78,10 @@ _HELP_INTENT_PATTERNS = [
     r"^hello[.! ]*$",
     r"^neler yapabilirsin\??$",
     r"^ne yapabilirsin\??$",
-    r"^yard[iı]m\??$",
+    r"^yard[ii]m\??$",
     r"^help$",
     r"^komutlar\??$",
-    r"^nas[ıi]l kullan[ıi]l[ıi]r\??$",
+    r"^nas[ii]l kullan[ii]l[ii]r\??$",
 ]
 
 
@@ -130,14 +130,14 @@ async def _reply_html_chunked(
 
 def _format_rag_response(data: dict) -> str:
     """
-    RAG JSON yanıtını Telegram HTML (ParseMode.HTML) için biçimlendirir.
-    LLM kaynaklı tüm metin html.escape ile sarılır; entity parse hatası oluşmaz.
+    RAG JSON yanitini Telegram HTML (ParseMode.HTML) için biçimlendirir.
+    LLM kaynakli tüm metin html.escape ile sarilir; entity parse hatasi oluşmaz.
     """
     e = html.escape
 
     yeterli = data.get("yeterli_veri", True)
     if not yeterli:
-        ozet = data.get("ozet") or "Yeterli veri bulunamadı."
+        ozet = data.get("ozet") or "Yeterli veri bulunamadi."
         return f"⚠️ <b>Yetersiz Veri</b>\n\n{e(str(ozet))}"
 
     lines: list[str] = []
@@ -154,7 +154,7 @@ def _format_rag_response(data: dict) -> str:
 
     haftalik = data.get("haftalik_ozet") or ""
     if haftalik:
-        lines.append(f"<b>Haftalık özet:</b>\n{e(str(haftalik))}")
+        lines.append(f"<b>Haftalik özet:</b>\n{e(str(haftalik))}")
         lines.append("")
 
     konsensus = data.get("konsensus_oneri")
@@ -191,9 +191,9 @@ def _format_rag_response(data: dict) -> str:
     out = "\n".join(lines).strip()
     if not out:
         return (
-            "ℹ️ <b>Yanıt üretildi</b> ancak özet alanları boş geldi.\n\n"
-            "Model bazen geçerli JSON döndürüp metin alanlarını doldurmayabiliyor. "
-            "Aynı soruyu tekrar deneyin veya soruyu biraz değiştirin."
+            "ℹ️ <b>Yanit üretildi</b> ancak özet alanlari boş geldi.\n\n"
+            "Model bazen geçerli JSON döndürüp metin alanlarini doldurmayabiliyor. "
+            "Ayni soruyu tekrar deneyin veya soruyu biraz değiştirin."
         )
     return out
 
@@ -213,7 +213,7 @@ async def cmd_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     args = context.args
     if not args:
         await update.message.reply_text(
-            "Kullanım: /analiz THYAO\n\nVeya aşağıdan bir hisse seçin:",
+            "Kullanim: /analiz THYAO\n\nVeya aşağidan bir hisse seçin:",
             reply_markup=stock_quick_access_keyboard(),
         )
         return
@@ -230,7 +230,7 @@ async def cmd_haftalik(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Handle /haftalik <TICKER> command."""
     args = context.args
     if not args:
-        await update.message.reply_text("Kullanım: /haftalik THYAO")
+        await update.message.reply_text("Kullanim: /haftalik THYAO")
         return
 
     stock_code = args[0].upper().strip()
@@ -257,13 +257,13 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_ingest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Manually trigger ingestion — admin use."""
-    await update.message.reply_text("Veri toplama başlatılıyor... Bu birkaç dakika sürebilir.")
+    await update.message.reply_text("Veri toplama başlatiliyor... Bu birkaç dakika sürebilir.")
     await update.message.chat.send_action(ChatAction.TYPING)
     try:
         from app.ingestion.pipeline import run_ingestion_pipeline
         result = await run_ingestion_pipeline()
         await update.message.reply_text(
-            f"Veri toplama tamamlandı!\n\n"
+            f"Veri toplama tamamlandi!\n\n"
             f"Döküman: {result.total_documents}\n"
             f"Chunk: {result.total_chunks}\n"
             f"Eklenen: {result.upserted}\n"
@@ -287,7 +287,7 @@ async def cmd_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     status_icon = "🟢" if ollama_ok else "🔴"
     await update.message.reply_text(
         f"*Sistem Durumu*\n\n"
-        f"{status_icon} Ollama: {'Bağlı' if ollama_ok else 'Bağlı Değil'}\n"
+        f"{status_icon} Ollama: {'Bağli' if ollama_ok else 'Bağli Değil'}\n"
         f"🤖 Model: {current_model}\n"
         f"📚 Vektör DB ({chroma_addr}): {stats['document_count']} chunk\n"
         f"🗃 Koleksiyon: {stats['collection']}",
@@ -306,7 +306,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if data.startswith("analiz:"):
         stock = data.split(":", 1)[1]
         if stock == "manual":
-            await query.edit_message_text("Analiz için hisse kodunu yazın (ör: THYAO):")
+            await query.edit_message_text("Analiz için hisse kodunu yazin (ör: THYAO):")
             return
         await query.edit_message_text(
             f"*{stock}* için analiz türü seçin:",
@@ -321,7 +321,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     elif data.startswith("haftalik:"):
         stock = data.split(":", 1)[1]
-        await query.edit_message_text(f"*{stock}* haftalık özet yükleniyor...", parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text(f"*{stock}* haftalik özet yükleniyor...", parse_mode=ParseMode.MARKDOWN)
         await _run_weekly_analysis(update, context, stock)
 
     elif data.startswith("kaynak:"):
@@ -351,9 +351,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif data.startswith("sabah:"):
         preset = (
             "Bugünkü Sabah Stratejisi bülteninde hangi şirket ve kurumlar geçiyor? "
-            "Her biri için tek cümle özet ver. Borsa dışı veya kodu olmayan kurumlar için de ayrı madde yaz."
+            "Her biri için tek cümle özet ver. Borsa dişi veya kodu olmayan kurumlar için de ayri madde yaz."
         )
-        await query.edit_message_text("📰 Sabah raporu taranıyor…")
+        await query.edit_message_text("📰 Sabah raporu taraniyor…")
         model = context.user_data.get(_SESSION_MODEL_KEY)
         src = context.user_data.get(_SESSION_SOURCE_KEY)
         try:
@@ -369,7 +369,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif data.startswith("model:"):
         model_name = data.split(":", 1)[1]
         context.user_data[_SESSION_MODEL_KEY] = model_name
-        await query.edit_message_text(f"Model *{model_name}* olarak ayarlandı.", parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text(f"Model *{model_name}* olarak ayarlandi.", parse_mode=ParseMode.MARKDOWN)
 
 
 # ── Free-text Message Handler ──────────────────────────────────────────────────
@@ -405,7 +405,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     try:
         from app.rag.chain import free_query
 
-        thinking_msg = await update.message.reply_text("Analiz yapılıyor...")
+        thinking_msg = await update.message.reply_text("Analiz yapiliyor...")
         result = await free_query(
             query=text,
             days_back=14,
@@ -452,7 +452,7 @@ async def _run_stock_analysis(
 
     except Exception as exc:
         logger.error(f"[bot] Stock analysis failed: {exc}", exc_info=True)
-        await chat.send_message(f"Analiz sırasında hata oluştu: {exc}")
+        await chat.send_message(f"Analiz sirasinda hata oluştu: {exc}")
 
 
 async def _run_weekly_analysis(
@@ -471,12 +471,12 @@ async def _run_weekly_analysis(
         formatted = _format_rag_response(result.raw_json)
         title = html.escape(stock_code)
         await chat.send_message(
-            f"<b>{title} Haftalık Özet</b>\n\n{formatted}",
+            f"<b>{title} Haftalik Özet</b>\n\n{formatted}",
             parse_mode=ParseMode.HTML,
         )
     except Exception as exc:
         logger.error(f"[bot] Weekly analysis failed: {exc}", exc_info=True)
-        await chat.send_message(f"Haftalık özet sırasında hata oluştu: {exc}")
+        await chat.send_message(f"Haftalik özet sirasinda hata oluştu: {exc}")
 
 
 # ── Application Builder ────────────────────────────────────────────────────────

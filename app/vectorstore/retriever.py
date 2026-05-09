@@ -40,10 +40,10 @@ class RetrievedChunk:
 
 def _build_where_filter(source: Optional[str] = None) -> Optional[dict]:
     """
-    ChromaDB metadata filtresi (yalnızca kaynak).
+    ChromaDB metadata filter (source only).
 
-    Tarih Chroma where içinde kullanılmaz — Chroma 1.x ile uyumsuzluk / boş sonuç önlenir;
-    tarih retrieve() içinde Python'da uygulanır.
+    Date is not used in Chroma where clauses to avoid Chroma 1.x incompatibility/empty results;
+    date filtering is applied in Python inside retrieve().
     """
     if source:
         return {"source": {"$eq": source}}
@@ -51,7 +51,7 @@ def _build_where_filter(source: Optional[str] = None) -> Optional[dict]:
 
 
 def _meta_calendar_date(meta: dict) -> Optional[date]:
-    """Chunk metadata'dan takvim günü (date / tarih ISO)."""
+    """Get calendar date from chunk metadata (date / tarih ISO)."""
     raw = meta.get("date") or meta.get("tarih")
     if raw is None:
         return None
@@ -164,7 +164,7 @@ def retrieve(
         date_to:    Explicit end date filter
         top_k:       Number of final results (default from config)
         use_mmr:     Apply MMR re-ranking for diversity
-        mmr_lambda:  MMR çeşitliliği (None = config)
+        mmr_lambda:  MMR diversity parameter (None = config)
 
     Returns:
         List of RetrievedChunk objects sorted by relevance/MMR score.
@@ -186,7 +186,7 @@ def retrieve(
     # Embed query
     query_vec = embed_query(query)
 
-    # Tarih filtresi Python'da — aday sayısını artır (filtre sonrası yeterli kalsın)
+    # Date filter is applied in Python — increase candidate pool (enough should remain after filtering)
     date_trim = resolved_date_from is not None or date_to is not None
     mult = 8 if date_trim else 3
     n_candidates = min(max(k * mult, 48), collection.count())
@@ -234,7 +234,7 @@ def retrieve(
         embeddings = kept_emb
         if not candidates:
             logger.info(
-                f"[retriever] Tarih filtresi sonrası aday kalmadı "
+                f"[retriever] No candidates left after date filtering "
                 f"(from={resolved_date_from}, to={date_to})"
             )
             return []
