@@ -32,6 +32,7 @@ class FreeQueryRequest(BaseModel):
     query: str = Field(..., min_length=3, max_length=500)
     days_back: int = Field(14, ge=1, le=90)
     model: Optional[str] = None
+    source: Optional[str] = Field(None, description="Source brokerage filter")
 
 
 # ── Response Models ──────────────────────────────────────────────────────────
@@ -76,3 +77,13 @@ class IngestTriggerResponse(BaseModel):
     total_chunks: int = 0
     upserted: int = 0
     errors: list[str] = []
+
+
+class HistoricalIngestRequest(BaseModel):
+    days: int = Field(7, ge=1, le=30, description="Number of past calendar days to ingest")
+
+
+class CollectionResetResponse(BaseModel):
+    success: bool
+    message: str
+    previous_count: int

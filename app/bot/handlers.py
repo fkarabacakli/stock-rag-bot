@@ -270,8 +270,8 @@ async def cmd_ingest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             f"Hata: {len(result.errors)}"
         )
     except Exception as exc:
-        logger.error(f"[bot] Manual ingest failed: {exc}")
-        await update.message.reply_text(f"Hata oluştu: {exc}")
+        logger.error(f"[bot] Manual ingest failed: {exc}", exc_info=True)
+        await update.message.reply_text("Veri toplama sirasinda bir hata oluştu. Lütfen loglari kontrol edin.")
 
 
 async def cmd_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -364,7 +364,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await query.message.reply_text(formatted, parse_mode=ParseMode.HTML)
         except Exception as exc:
             logger.error(f"[bot] Sabah preset RAG failed: {exc}", exc_info=True)
-            await query.message.reply_text(f"Hata: {exc}")
+            await query.message.reply_text("Sabah raporu alınırken bir hata oluştu. Lütfen tekrar deneyin.")
 
     elif data.startswith("model:"):
         model_name = data.split(":", 1)[1]
@@ -418,7 +418,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _reply_html_chunked(update, formatted)
     except Exception as exc:
         logger.error(f"[bot] Free query failed: {exc}", exc_info=True)
-        await update.message.reply_text(f"Bir hata oluştu: {exc}")
+        await update.message.reply_text("Sorgu işlenirken bir hata oluştu. Lütfen tekrar deneyin.")
 
 
 # ── Internal Helpers ───────────────────────────────────────────────────────────
@@ -439,12 +439,15 @@ async def _run_stock_analysis(
     try:
         from app.rag.chain import query_analysis
 
-        query = f"{stock_code} hissesi için teknik analiz, destek direnç seviyeleri ve öneri"
+        query = (
+            f"{stock_code} hissesi analiz öneri görünüm. "
+            f"{stock_code} için beklentiler, hedef fiyat ve son gelişmeler."
+        )
         result = await query_analysis(
             query=query,
             stock_code=stock_code,
             source=source,
-            days_back=7,
+            days_back=14,
             model=model,
         )
         formatted = _format_rag_response(result.raw_json)
@@ -452,7 +455,7 @@ async def _run_stock_analysis(
 
     except Exception as exc:
         logger.error(f"[bot] Stock analysis failed: {exc}", exc_info=True)
-        await chat.send_message(f"Analiz sirasinda hata oluştu: {exc}")
+        await chat.send_message("Analiz sirasinda bir hata oluştu. Lütfen tekrar deneyin.")
 
 
 async def _run_weekly_analysis(
@@ -476,7 +479,7 @@ async def _run_weekly_analysis(
         )
     except Exception as exc:
         logger.error(f"[bot] Weekly analysis failed: {exc}", exc_info=True)
-        await chat.send_message(f"Haftalik özet sirasinda hata oluştu: {exc}")
+        await chat.send_message("Haftalik özet sirasinda bir hata oluştu. Lütfen tekrar deneyin.")
 
 
 # ── Application Builder ────────────────────────────────────────────────────────

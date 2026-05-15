@@ -15,7 +15,7 @@ import base64
 import json
 import re
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -38,6 +38,29 @@ _SABAH_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 _GENERIC_DMY_RE = re.compile(r"(\d{1,2})\s*[/.\s]+\s*(\d{1,2})\s*[/.\s]+\s*(\d{4})")
+
+
+def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    """Extract plain text from a PDF using PyMuPDF (fitz)."""
+    try:
+        import fitz
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+            pages = [page.get_text("text").strip() for page in doc]
+        return "\n\n".join(p for p in pages if p)
+    except Exception as exc:
+        logger.warning(f"[pdf] Text extraction failed: {exc}")
+        return ""
+
+
+def _parse_date_from_text(text: str) -> date | None:
+    """Return the first DD/MM/YYYY or DD.MM.YYYY date found in plain text."""
+    m = _GENERIC_DMY_RE.search(text)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
 _TICKER_RE = re.compile(r"\b[A-Z]{3,5}\b")
 # "Arcelik (ARCLK, Notr): ..." — keep full parenthetical (rating) in metin
 _COMPANY_ITEM_RE = re.compile(
@@ -55,31 +78,32 @@ _COMPANY_COLON_NO_TICKER_RE = re.compile(
 # Do not treat sentence continuations like "Bu ceyrekte:" as company names
 _BAD_STANDALONE_COMPANY_START = frozenset(
     {
+        # All entries are pre-ascii-folded so comparison with _ascii_fold(word) works correctly.
         "bu",
         "buna",
         "bunu",
-        "böylece",
-        "böylelikle",
-        "ayrica",
-        "diğer",
-        "öte",
+        "boylece",        # böylece
+        "boylelikle",     # böylelikle
+        "ayrica",         # ayrıca
+        "diger",          # diğer
+        "ote",            # öte
         "yani",
         "neticede",
-        "sonuçta",
-        "dolayisiyla",
-        "özetle",
+        "sonucta",        # sonuçta
+        "dolayisiyla",    # dolayısıyla
+        "ozetle",         # özetle
         "nihayetinde",
         "bununla",
         "bundan",
-        "çoğu",
-        "bazi",
-        "şöyle",
-        "ayri",
+        "cogu",           # çoğu
+        "bazi",           # bazı
+        "soyle",          # şöyle
+        "ayri",           # ayrı
         "ilk",
         "ikinci",
-        "üçüncü",
-        "geçen",
-        "geçtiğimiz",
+        "ucuncu",         # üçüncü
+        "gecen",          # geçen
+        "gectigimiz",     # geçtiğimiz
     }
 )
 
@@ -747,6 +771,183 @@ class ZiraatYatirimScraper(BaseScraper):
                     },
                 )
             )
+        return docs
+
+    def _find_archive_links(self, soup: BeautifulSoup, limit: int = 30) -> list[str]:
+        """
+        Scan the page for links to past bulletins.
+
+        Two strategies, in priority order:
+          1. <select> dropdowns whose <option value="..."> contain URLs — common
+             on Turkish financial sites where a date picker navigates to an archive page.
+          2. Explicit PDF <a href="..."> links anywhere on the page.
+        """
+        seen: set[str] = set()
+        urls: list[str] = []
+
+        # Strategy 1: select/option dropdowns
+        for sel in soup.find_all("select"):
+            for opt in sel.find_all("option"):
+                val = (opt.get("value") or "").strip()
+                if not val or val in {"0", "#", ""}:
+                    continue
+                if val.startswith("/"):
+                    full = self.BASE_URL + val
+                elif val.startswith("http"):
+                    full = val
+                else:
+                    continue
+                if full not in seen:
+                    seen.add(full)
+                    urls.append(full)
+
+        # Strategy 2: PDF links
+        for a in soup.find_all("a", href=True):
+            href = a["href"].strip()
+            if not href or href.startswith("javascript") or href == "#":
+                continue
+            if not href.lower().endswith(".pdf"):
+                continue
+            full = href if href.startswith("http") else self.BASE_URL + href
+            if full not in seen:
+                seen.add(full)
+                urls.append(full)
+
+        return urls[:limit]
+
+    def _parse_sabah_from_text(
+        self,
+        text: str,
+        doc_date: date,
+        pdf_url: str = "",
+    ) -> list[BulletinDocument]:
+        """
+        Build BulletinDocuments from plain PDF text.
+        Tries semantic section parsing first; falls back to a single GENEL document.
+        """
+        mentioned_tickers = _extract_mentioned_tickers(f"<p>{text[:6000]}</p>")
+        raw_html = wrap_metin_paragraph(text)
+        records = _extract_section_records(raw_html)
+        docs: list[BulletinDocument] = []
+
+        if records:
+            for idx, rec in enumerate(records):
+                meta = rec["metadata"]
+                hisse = meta.get("hisse") or "GENEL"
+                sirket = meta.get("sirket", "")
+                mentioned_for_doc = (
+                    hisse if hisse != "GENEL" else ",".join(mentioned_tickers)
+                )
+                docs.append(
+                    BulletinDocument(
+                        title=f"Sabah Stratejisi {doc_date.isoformat()} - {sirket or hisse} - {idx + 1}",
+                        stock_code=hisse,
+                        category=meta.get("kategori", "Sabah_Stratejisi"),
+                        raw_html=wrap_metin_paragraph(rec["metin"]),
+                        date=doc_date,
+                        source=self.SOURCE_NAME,
+                        url=pdf_url or self.SABAH_STRATEJISI_URL,
+                        extra_metadata={
+                            "bulten_turu": "sabah_stratejisi",
+                            "pdf_url": pdf_url,
+                            "sirket": sirket,
+                            "mentioned_tickers": mentioned_for_doc,
+                            "ocr_source": "pymupdf",
+                        },
+                    )
+                )
+        else:
+            docs.append(
+                BulletinDocument(
+                    title=f"Sabah Stratejisi {doc_date.isoformat()} (PDF)",
+                    stock_code="GENEL",
+                    category="Sabah_Stratejisi",
+                    raw_html=raw_html,
+                    date=doc_date,
+                    source=self.SOURCE_NAME,
+                    url=pdf_url or self.SABAH_STRATEJISI_URL,
+                    extra_metadata={
+                        "bulten_turu": "sabah_stratejisi",
+                        "pdf_url": pdf_url,
+                        "mentioned_tickers": ",".join(mentioned_tickers),
+                        "ocr_source": "pymupdf",
+                    },
+                )
+            )
+        return docs
+
+    async def fetch_historical_sabah_bulletins(self, days: int = 7) -> list[BulletinDocument]:
+        """
+        Fetch Sabah Stratejisi bulletins for up to `days` past calendar days.
+
+        Flow:
+          1. Fetch the main page → parse today's bulletin.
+          2. Scan the page for archive links (select dropdowns + PDF hrefs).
+          3. For each link:
+             - PDF  → download → extract text via PyMuPDF → parse semantically.
+             - HTML → fetch → parse with the same _parse_sabah_stratejisi logic.
+          4. Deduplicate by date, return newest-first.
+        """
+        assert self._client is not None, "Use as async context manager"
+
+        html = await self._fetch(
+            self.SABAH_STRATEJISI_URL,
+            extra_headers={"Referer": f"{self.BASE_URL}/tr/arastirma"},
+        )
+        soup = BeautifulSoup(html, "lxml")
+
+        docs: list[BulletinDocument] = self._parse_sabah_stratejisi(html)
+        seen_dates: set[str] = {d.date.isoformat() for d in docs}
+        cutoff = date.today() - timedelta(days=days)
+
+        archive_urls = self._find_archive_links(soup)
+        logger.info(
+            f"[{self.SOURCE_NAME}] Historical: {len(archive_urls)} archive link(s) found"
+        )
+
+        for url in archive_urls:
+            if len({d for d in seen_dates if date.fromisoformat(d) >= cutoff}) >= days:
+                break
+            try:
+                if url.lower().endswith(".pdf"):
+                    resp = await self._client.get(url, timeout=60)
+                    resp.raise_for_status()
+                    pdf_text = _extract_pdf_text(resp.content)
+                    if not pdf_text:
+                        continue
+                    pdf_date = _parse_date_from_text(pdf_text) or date.today()
+                    if pdf_date < cutoff or pdf_date.isoformat() in seen_dates:
+                        continue
+                    seen_dates.add(pdf_date.isoformat())
+                    new = self._parse_sabah_from_text(pdf_text, pdf_date, pdf_url=url)
+                    docs.extend(new)
+                    logger.info(
+                        f"[{self.SOURCE_NAME}] PDF archive {url}: "
+                        f"{len(new)} doc(s) for {pdf_date}"
+                    )
+                else:
+                    page_html = await self._fetch(
+                        url, extra_headers={"Referer": self.SABAH_STRATEJISI_URL}
+                    )
+                    page_docs = self._parse_sabah_stratejisi(page_html)
+                    added = 0
+                    for d in page_docs:
+                        if d.date >= cutoff and d.date.isoformat() not in seen_dates:
+                            seen_dates.add(d.date.isoformat())
+                            docs.append(d)
+                            added += 1
+                    if added:
+                        logger.info(
+                            f"[{self.SOURCE_NAME}] HTML archive {url}: {added} new doc(s)"
+                        )
+            except Exception as exc:
+                logger.warning(f"[{self.SOURCE_NAME}] Archive link failed {url}: {exc}")
+
+        logger.info(
+            f"[{self.SOURCE_NAME}] Historical fetch complete: "
+            f"{len(docs)} total doc(s) across "
+            f"{len(seen_dates)} date(s)"
+        )
         return docs
 
     def _parse_sabah_stratejisi(self, html: str) -> list[BulletinDocument]:

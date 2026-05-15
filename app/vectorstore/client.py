@@ -37,22 +37,30 @@ def get_chroma_client():
 
 
 def get_chroma_collection():
-    """Return or create the singleton collection."""
-    global _collection
-    if _collection is None:
-        client = get_chroma_client()
-        _collection = client.get_or_create_collection(
-            name=_settings.chroma_collection_name,
-            metadata={
-                "hnsw:space": "cosine",
-                "description": "Financial bulletin chunks — Ziraat & Halk Yatirim",
-            },
-        )
-        count = _collection.count()
-        logger.info(
-            f"[chroma] Collection '{_settings.chroma_collection_name}' ready — "
-            f"{count} documents"
-        )
+    """Return or create the singleton collection, reconnecting if the server restarted."""
+    global _collection, _client
+    if _collection is not None:
+        try:
+            _collection.count()
+            return _collection
+        except Exception:
+            logger.warning("[chroma] Collection ping failed — reconnecting")
+            _collection = None
+            _client = None
+
+    client = get_chroma_client()
+    _collection = client.get_or_create_collection(
+        name=_settings.chroma_collection_name,
+        metadata={
+            "hnsw:space": "cosine",
+            "description": "Financial bulletin chunks — Ziraat & Halk Yatirim",
+        },
+    )
+    count = _collection.count()
+    logger.info(
+        f"[chroma] Collection '{_settings.chroma_collection_name}' ready — "
+        f"{count} documents"
+    )
     return _collection
 
 

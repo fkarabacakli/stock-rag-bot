@@ -76,18 +76,24 @@ class BaseScraper(ABC):
         if self._client:
             await self._client.aclose()
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True,
-    )
     async def _fetch(self, url: str, *, extra_headers: Optional[Mapping[str, str]] = None) -> str:
         """Fetch a URL with retry logic. Per-request headers merge with the client defaults."""
         assert self._client is not None, "Use as async context manager"
-        logger.debug(f"[{self.SOURCE_NAME}] Fetching: {url}")
-        response = await self._client.get(url, headers=dict(extra_headers) if extra_headers else None)
-        response.raise_for_status()
-        return response.text
+
+        @retry(
+            stop=stop_after_attempt(settings.scraper_retry_attempts),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            reraise=True,
+        )
+        async def _do() -> str:
+            logger.debug(f"[{self.SOURCE_NAME}] Fetching: {url}")
+            response = await self._client.get(
+                url, headers=dict(extra_headers) if extra_headers else None
+            )
+            response.raise_for_status()
+            return response.text
+
+        return await _do()
 
     @abstractmethod
     async def fetch_bulletins(self) -> list[BulletinDocument]:

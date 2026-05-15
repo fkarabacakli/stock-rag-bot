@@ -6,7 +6,7 @@ Flow: scrape → chunk → enrich tables → embed → upsert to ChromaDB
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loguru import logger
 
@@ -27,11 +27,7 @@ class IngestionResult:
     total_chunks: int = 0
     upserted: int = 0
     skipped: int = 0
-    errors: list[str] = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: list[str] = field(default_factory=list)
 
 
 async def _scrape_all() -> list[BulletinDocument]:
@@ -65,39 +61,14 @@ def _enrich_chunks_with_tables(chunks: list[Chunk]) -> list[Chunk]:
     return enriched
 
 
-async def run_ingestion_pipeline() -> IngestionResult:
-    """
-    Full ingestion pipeline. Can be called by the scheduler or triggered
-    via the API.
-    """
+async def _embed_and_upsert(chunks: list[Chunk], result: IngestionResult) -> None:
+    """Embed chunks and upsert to ChromaDB, writing counts/errors into `result`."""
     from app.vectorstore.client import get_chroma_collection
     from app.vectorstore.embeddings import get_embedding_function
 
-    result = IngestionResult()
-
-    # Step 1: Scrape
-    docs = await _scrape_all()
-    result.total_documents = len(docs)
-
-    if not docs:
-        logger.warning("[pipeline] No documents scraped — aborting pipeline")
-        return result
-
-    # Step 2: Chunk
-    chunks = chunk_documents(docs)
-    logger.info(f"[pipeline] Generated {len(chunks)} chunks from {len(docs)} documents")
-
-    # Step 3: Enrich with table data
-    chunks = _enrich_chunks_with_tables(chunks)
-    result.total_chunks = len(chunks)
-
-    if not chunks:
-        logger.warning("[pipeline] No chunks generated — aborting pipeline")
-        return result
-
-    # Step 4: Embed and upsert to ChromaDB
     collection = get_chroma_collection()
     embed_fn = get_embedding_function()
+    loop = asyncio.get_running_loop()
 
     batch_size = 50
     for i in range(0, len(chunks), batch_size):
@@ -105,15 +76,8 @@ async def run_ingestion_pipeline() -> IngestionResult:
         try:
             ids = [c.chromadb_id() for c in batch]
             texts = [c.embedding_text for c in batch]
-            metadatas = [c.metadata for c in batch]
-
-            # Ensure metadata values are all strings (ChromaDB requirement)
-            clean_metadatas = [
-                {k: str(v) for k, v in m.items()} for m in metadatas
-            ]
-
-            embeddings = embed_fn(texts)
-
+            clean_metadatas = [{k: str(v) for k, v in c.metadata.items()} for c in batch]
+            embeddings = await loop.run_in_executor(None, embed_fn, texts)
             collection.upsert(
                 ids=ids,
                 embeddings=embeddings,
@@ -122,17 +86,12 @@ async def run_ingestion_pipeline() -> IngestionResult:
             )
             result.upserted += len(batch)
             logger.debug(f"[pipeline] Upserted batch {i // batch_size + 1} ({len(batch)} chunks)")
-
         except Exception as exc:
             raw_error = str(exc)
-            if (
-                "Collection expecting embedding with dimension" in raw_error
-                and "got" in raw_error
-            ):
+            if "Collection expecting embedding with dimension" in raw_error and "got" in raw_error:
                 error_msg = (
                     f"Batch {i // batch_size + 1} failed: {raw_error}. "
-                    "Embedding model dimension does not match existing Chroma collection. "
-                    "Use a new CHROMA_COLLECTION_NAME or reset the current collection."
+                    "Embedding dimension mismatch — reset the collection or change CHROMA_COLLECTION_NAME."
                 )
             else:
                 error_msg = f"Batch {i // batch_size + 1} failed: {raw_error}"
@@ -140,8 +99,74 @@ async def run_ingestion_pipeline() -> IngestionResult:
             result.errors.append(error_msg)
             result.skipped += len(batch)
 
+
+async def run_ingestion_pipeline() -> IngestionResult:
+    """
+    Today's ingestion pipeline (all active scrapers, current bulletin only).
+    Called by the daily scheduler or the /ingest/trigger endpoint.
+    """
+    result = IngestionResult()
+
+    docs = await _scrape_all()
+    result.total_documents = len(docs)
+    if not docs:
+        logger.warning("[pipeline] No documents scraped — aborting pipeline")
+        return result
+
+    chunks = chunk_documents(docs)
+    logger.info(f"[pipeline] Generated {len(chunks)} chunks from {len(docs)} documents")
+    chunks = _enrich_chunks_with_tables(chunks)
+    result.total_chunks = len(chunks)
+    if not chunks:
+        logger.warning("[pipeline] No chunks generated — aborting pipeline")
+        return result
+
+    await _embed_and_upsert(chunks, result)
     logger.info(
         f"[pipeline] Done — upserted={result.upserted}, "
+        f"skipped={result.skipped}, errors={len(result.errors)}"
+    )
+    return result
+
+
+async def run_historical_ingestion_pipeline(days: int = 7) -> IngestionResult:
+    """
+    Fetch the last `days` Sabah Stratejisi bulletins and ingest them.
+
+    Uses archive links (dropdown URLs / PDF hrefs) found on the main page.
+    Other bulletin types (Teknik, Portföy) are image-based and are skipped here
+    since no historical HTML is available for them.
+    """
+    result = IngestionResult()
+
+    scraper = ZiraatYatirimScraper()
+    try:
+        async with scraper:
+            docs = await scraper.fetch_historical_sabah_bulletins(days=days)
+    except Exception as exc:
+        error_msg = f"Historical scrape failed: {exc}"
+        logger.error(f"[pipeline] {error_msg}", exc_info=True)
+        result.errors.append(error_msg)
+        return result
+
+    result.total_documents = len(docs)
+    if not docs:
+        logger.warning(f"[pipeline] Historical: no documents scraped for last {days} days")
+        return result
+
+    chunks = chunk_documents(docs)
+    logger.info(
+        f"[pipeline] Historical: {len(chunks)} chunks from {len(docs)} documents "
+        f"({days} days)"
+    )
+    chunks = _enrich_chunks_with_tables(chunks)
+    result.total_chunks = len(chunks)
+    if not chunks:
+        return result
+
+    await _embed_and_upsert(chunks, result)
+    logger.info(
+        f"[pipeline] Historical done — upserted={result.upserted}, "
         f"skipped={result.skipped}, errors={len(result.errors)}"
     )
     return result

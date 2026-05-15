@@ -223,7 +223,10 @@ def retrieve(
         for doc, meta, dist, chunk_id in zip(docs, metas, distances, ids)
     ]
 
+    logger.debug(f"[retriever] ChromaDB returned {len(candidates)} raw candidates")
+
     if date_trim:
+        sample_dates = sorted({c.metadata.get("date", "?") for c in candidates[:10]})
         kept: list[RetrievedChunk] = []
         kept_emb: list = []
         for cand, emb in zip(candidates, embeddings):
@@ -233,24 +236,43 @@ def retrieve(
         candidates = kept
         embeddings = kept_emb
         if not candidates:
-            logger.info(
-                f"[retriever] No candidates left after date filtering "
-                f"(from={resolved_date_from}, to={date_to})"
+            logger.warning(
+                f"[retriever] All candidates removed by date filter "
+                f"(range: {resolved_date_from} → {date_to}). "
+                f"Dates seen in collection: {sample_dates}"
             )
             return []
+        logger.debug(f"[retriever] {len(candidates)} candidates remain after date filter")
 
     if stock_code and stock_code.upper() != "GENEL":
+        ticker = stock_code.upper()
         filtered_pairs = [
             (cand, emb)
             for cand, emb in zip(candidates, embeddings)
-            if _chunk_matches_stock(cand, stock_code)
+            if _chunk_matches_stock(cand, ticker)
         ]
-        if filtered_pairs:
-            candidates = [c for c, _ in filtered_pairs]
-            embeddings = [e for _, e in filtered_pairs]
-        else:
-            candidates = []
-            embeddings = []
+        if not filtered_pairs:
+            # Metadata didn't match (e.g. bulletin stored as GENEL) — fall back to
+            # text-based search so we don't silently return nothing.
+            filtered_pairs = [
+                (cand, emb)
+                for cand, emb in zip(candidates, embeddings)
+                if ticker in cand.text.upper()
+            ]
+            if filtered_pairs:
+                logger.info(
+                    f"[retriever] Metadata stock filter empty for {ticker} — "
+                    f"text fallback found {len(filtered_pairs)} chunk(s)"
+                )
+            else:
+                logger.warning(
+                    f"[retriever] No chunks found for {ticker} via metadata or text — "
+                    f"returning top scored chunks unfiltered"
+                )
+                filtered_pairs = list(zip(candidates, embeddings))
+
+        candidates = [c for c, _ in filtered_pairs]
+        embeddings = [e for _, e in filtered_pairs]
 
     lambda_m = mmr_lambda if mmr_lambda is not None else _settings.retriever_mmr_lambda
     if use_mmr and len(embeddings) > 0 and candidates:

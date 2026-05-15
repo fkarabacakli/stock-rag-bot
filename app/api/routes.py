@@ -4,8 +4,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from loguru import logger
 
 from app.api.schemas import (
+    CollectionResetResponse,
     FreeQueryRequest,
     HealthResponse,
+    HistoricalIngestRequest,
     IngestTriggerResponse,
     QueryRequest,
     QueryResponse,
@@ -120,6 +122,7 @@ async def free_query(req: FreeQueryRequest):
             query=req.query,
             days_back=req.days_back,
             model=req.model,
+            source=req.source,
         )
     except Exception as exc:
         logger.error(f"[routes] /query/free failed: {exc}", exc_info=True)
@@ -161,6 +164,80 @@ async def trigger_ingestion(background_tasks: BackgroundTasks):
         success=True,
         message="Ingestion pipeline started in background. Check /api/v1/stats for progress.",
     )
+
+
+@router.post("/collection/reset", response_model=CollectionResetResponse, tags=["System"])
+async def reset_collection():
+    """
+    Wipe the ChromaDB collection entirely.
+    All stored bulletins are deleted. Run ingestion afterwards to repopulate.
+    """
+    from app.vectorstore.client import get_collection_stats
+    from app.vectorstore.client import reset_collection as _reset
+
+    prev = get_collection_stats()["document_count"]
+    _reset()
+    return CollectionResetResponse(
+        success=True,
+        message="Collection wiped. Run /ingest/trigger or /ingest/historical to repopulate.",
+        previous_count=prev,
+    )
+
+
+@router.post("/ingest/historical", response_model=IngestTriggerResponse, tags=["Ingestion"])
+async def trigger_historical_ingestion(req: HistoricalIngestRequest):
+    """
+    Fetch and ingest the last N daily Sabah Stratejisi bulletins.
+
+    Scans the main page for archive links (date-picker dropdowns and PDF hrefs).
+    Other bulletin types (Teknik, Portföy) are image-based and not included here.
+    """
+    from app.ingestion.pipeline import run_historical_ingestion_pipeline
+
+    try:
+        result = await run_historical_ingestion_pipeline(days=req.days)
+        return IngestTriggerResponse(
+            success=len(result.errors) == 0,
+            message=f"Historical ingestion complete ({req.days} days)",
+            total_documents=result.total_documents,
+            total_chunks=result.total_chunks,
+            upserted=result.upserted,
+            errors=result.errors,
+        )
+    except Exception as exc:
+        logger.error(f"[routes] Historical ingestion failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
+
+
+@router.post("/ingest/reset-and-historical", response_model=IngestTriggerResponse, tags=["Ingestion"])
+async def reset_and_historical_ingestion(req: HistoricalIngestRequest):
+    """
+    Wipe the collection and ingest the last N bulletins fresh.
+    Convenient for fixing a corrupted or stale database in one call.
+    """
+    from app.vectorstore.client import reset_collection as _reset
+    from app.ingestion.pipeline import run_historical_ingestion_pipeline
+
+    _reset()
+    try:
+        result = await run_historical_ingestion_pipeline(days=req.days)
+        return IngestTriggerResponse(
+            success=len(result.errors) == 0,
+            message=f"Collection reset + historical ingestion complete ({req.days} days)",
+            total_documents=result.total_documents,
+            total_chunks=result.total_chunks,
+            upserted=result.upserted,
+            errors=result.errors,
+        )
+    except Exception as exc:
+        logger.error(f"[routes] Reset+historical failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
 
 
 @router.post("/ingest/trigger/sync", response_model=IngestTriggerResponse, tags=["Ingestion"])

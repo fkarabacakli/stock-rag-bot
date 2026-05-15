@@ -12,6 +12,7 @@ Main entry points:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -32,22 +33,32 @@ from app.llm.prompts import (
 from app.vectorstore.retriever import RetrievedChunk, retrieve
 
 _SABAH_OVERVIEW_NEEDLES = (
+    # Company / stock overview
     "hangi şirket",
     "hangi hisse",
-    "bugün haber",
+    "şirket haber",
+    "hangi gelişme",
+    "hangi kurum",
+    # Morning / bulletin references
     "bugünkü sabah",
     "sabah stratejisi",
     "sabah rapor",
-    "şirket haber",
-    "hangi gelişme",
-    "neyi var",
-    "neler var",
-    "raporda hangi",
-    "bültende ne",
     "sabah bülten",
+    "sabah ne",
+    "sabah neler",
     "günlük bültende",
-    "hangi kurum",
+    "bültende ne",
     "bülten özet",
+    "raporda hangi",
+    "raporda ne",
+    # "What's today / what's there" patterns
+    "bugün haber",
+    "bugün ne",
+    "bugün neler",
+    "ne var bugün",
+    "neler var",
+    "neyi var",
+    "ne haber",
 )
 
 
@@ -212,13 +223,17 @@ async def query_analysis(
     top_k = settings.rag_sabah_overview_top_k if sabah_overview else None
     mmr_lambda = settings.rag_sabah_overview_mmr_lambda if sabah_overview else None
 
-    chunks = retrieve(
-        query=retrieve_query,
-        stock_code=stock_code,
-        source=source,
-        days_back=days_back,
-        top_k=top_k,
-        mmr_lambda=mmr_lambda,
+    loop = asyncio.get_running_loop()
+    chunks = await loop.run_in_executor(
+        None,
+        lambda: retrieve(
+            query=retrieve_query,
+            stock_code=stock_code,
+            source=source,
+            days_back=days_back,
+            top_k=top_k,
+            mmr_lambda=mmr_lambda,
+        ),
     )
     chunks = _apply_min_score(chunks, settings.rag_min_chunk_score)
 
@@ -271,18 +286,20 @@ async def query_weekly(
 
     Synthesizes last 7-day reports across all brokerages.
     """
-    from app.config import get_settings
     settings = get_settings()
-
     llm = get_llm(model)
 
     query = f"Bu hafta {stock_code} hissesine ait tüm analizler ve öneriler"
 
-    chunks = retrieve(
-        query=query,
-        stock_code=stock_code,
-        days_back=7,
-        top_k=settings.retriever_top_k * 2,
+    loop = asyncio.get_running_loop()
+    chunks = await loop.run_in_executor(
+        None,
+        lambda: retrieve(
+            query=query,
+            stock_code=stock_code,
+            days_back=7,
+            top_k=settings.retriever_top_k * 2,
+        ),
     )
     chunks = _apply_min_score(chunks, settings.rag_min_chunk_score)
 

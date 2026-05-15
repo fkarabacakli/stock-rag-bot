@@ -47,9 +47,9 @@ _BLACKLIST: frozenset[str] = frozenset({
     # Report / document jargon
     "PDF", "HLY", "HY", "GYO", "IHH",
     # Misc country / region codes
-    "TR", "TUR", "EU", "UK", "ABD",
+    "TR", "TUR", "EU", "UK",
     # Common false positives seen in Halk bulletins
-    "BIST", "BIST", "VERI", "TABLO",
+    "VERI", "TABLO",
 })
 
 

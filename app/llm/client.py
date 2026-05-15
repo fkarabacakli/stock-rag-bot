@@ -72,7 +72,13 @@ def parse_json_response(raw: str) -> dict:
 
     if text.startswith("```"):
         lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        lines = lines[1:]  # strip opening fence (```json etc.)
+        try:
+            close = next(i for i, l in enumerate(lines) if l.strip() == "```")
+            lines = lines[:close]
+        except StopIteration:
+            pass
+        text = "\n".join(lines)
 
     try:
         return json.loads(text)
