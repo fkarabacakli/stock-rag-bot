@@ -136,9 +136,11 @@ def _format_rag_response(data: dict) -> str:
     e = html.escape
 
     yeterli = data.get("yeterli_veri", True)
-    if not yeterli:
-        ozet = data.get("ozet") or "Yeterli veri bulunamadi."
-        return f"⚠️ <b>Yetersiz Veri</b>\n\n{e(str(ozet))}"
+    # Safety net: LLM sometimes sets yeterli_veri=false while still producing
+    # a meaningful ozet or sirket_haber_ozetleri. Treat that as sufficient.
+    has_content = bool(data.get("ozet") or data.get("sirket_haber_ozetleri"))
+    if not yeterli and not has_content:
+        return "⚠️ <b>Yetersiz Veri</b>\n\nYeterli veri bulunamadi."
 
     lines: list[str] = []
 

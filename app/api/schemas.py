@@ -79,10 +79,6 @@ class IngestTriggerResponse(BaseModel):
     errors: list[str] = []
 
 
-class HistoricalIngestRequest(BaseModel):
-    days: int = Field(7, ge=1, le=30, description="Number of past calendar days to ingest")
-
-
 class CollectionResetResponse(BaseModel):
     success: bool
     message: str

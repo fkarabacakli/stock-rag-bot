@@ -32,6 +32,12 @@ from app.llm.prompts import (
 )
 from app.vectorstore.retriever import RetrievedChunk, retrieve
 
+# Token budget for LLM generation.
+# Overview queries list up to 18 companies — each entry needs ~50 tokens,
+# so 2500 gives comfortable headroom without wasting VRAM.
+_NUM_PREDICT_DEFAULT = 1024
+_NUM_PREDICT_OVERVIEW = 2500
+
 _SABAH_OVERVIEW_NEEDLES = (
     # Company / stock overview
     "hangi şirket",
@@ -197,8 +203,8 @@ async def query_analysis(
 
     Flow:
       1. Retrieve relevant chunks from ChromaDB (MMR re-rank)
-      2. ChatOllama + system/user messages → JSON
-      3. Parse the JSON output
+      2. ChatOllama (JSON mode) + system/user messages → JSON
+      3. Parse JSON; retry once if the output is unparseable
 
     Args:
         query:      Natural language query
@@ -211,7 +217,7 @@ async def query_analysis(
         RAGResponse — JSON result, sources, and metadata
     """
     settings = get_settings()
-    llm = get_llm(model)
+    model_name = model or settings.ollama_model
 
     retrieve_query = query
     if sabah_overview:
@@ -248,19 +254,31 @@ async def query_analysis(
             raw_json=json.loads(NO_DATA_RESPONSE),
             sources=[],
             query=query,
-            model_used=llm.model,
+            model_used=model_name,
             chunks_retrieved=0,
         )
 
+    num_predict = _NUM_PREDICT_OVERVIEW if sabah_overview else _NUM_PREDICT_DEFAULT
+    llm = get_llm(model, num_predict=num_predict)
+
     context_texts = [_format_chunk_for_context(c) for c in chunks]
     user_message = build_user_message(query, context_texts)
+    messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_message)]
 
-    logger.debug(f"[rag] Calling LLM -> model={llm.model}")
-    msg_out = await llm.ainvoke(
-        [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_message)]
-    )
+    logger.debug(f"[rag] Calling LLM -> model={llm.model}, num_predict={num_predict}")
+    msg_out = await llm.ainvoke(messages)
     raw_text = msg_out.content if isinstance(msg_out, AIMessage) else str(msg_out)
     parsed = parse_json_response(raw_text)
+
+    if parsed.get("parse_error"):
+        logger.warning("[rag] JSON parse failed — retrying once with explicit reminder")
+        retry_messages = messages + [
+            AIMessage(content=raw_text),
+            HumanMessage(content="Yanıtın geçerli JSON değildi. YALNIZCA JSON nesnesini döndür, başka hiçbir metin olmasın."),
+        ]
+        retry_out = await llm.ainvoke(retry_messages)
+        retry_raw = retry_out.content if isinstance(retry_out, AIMessage) else str(retry_out)
+        parsed = parse_json_response(retry_raw)
 
     if sabah_overview:
         parsed = _apply_sabah_overview_fallback(parsed, chunks)
@@ -287,7 +305,7 @@ async def query_weekly(
     Synthesizes last 7-day reports across all brokerages.
     """
     settings = get_settings()
-    llm = get_llm(model)
+    model_name = model or settings.ollama_model
 
     query = f"Bu hafta {stock_code} hissesine ait tüm analizler ve öneriler"
 
@@ -310,18 +328,29 @@ async def query_weekly(
             raw_json=json.loads(NO_DATA_RESPONSE),
             sources=[],
             query=query,
-            model_used=llm.model,
+            model_used=model_name,
             chunks_retrieved=0,
         )
 
+    llm = get_llm(model, num_predict=_NUM_PREDICT_DEFAULT)
+
     context_texts = [_format_chunk_for_context(c) for c in chunks]
     user_message = build_weekly_user_message(query, context_texts, stock_code)
+    messages = [SystemMessage(content=WEEKLY_SUMMARY_PROMPT), HumanMessage(content=user_message)]
 
-    msg_out = await llm.ainvoke(
-        [SystemMessage(content=WEEKLY_SUMMARY_PROMPT), HumanMessage(content=user_message)]
-    )
+    msg_out = await llm.ainvoke(messages)
     raw_text = msg_out.content if isinstance(msg_out, AIMessage) else str(msg_out)
     parsed = parse_json_response(raw_text)
+
+    if parsed.get("parse_error"):
+        logger.warning("[rag] Weekly JSON parse failed — retrying once with explicit reminder")
+        retry_messages = messages + [
+            AIMessage(content=raw_text),
+            HumanMessage(content="Yanıtın geçerli JSON değildi. YALNIZCA JSON nesnesini döndür, başka hiçbir metin olmasın."),
+        ]
+        retry_out = await llm.ainvoke(retry_messages)
+        retry_raw = retry_out.content if isinstance(retry_out, AIMessage) else str(retry_out)
+        parsed = parse_json_response(retry_raw)
 
     if not parsed.get("hisse_kodu"):
         parsed["hisse_kodu"] = stock_code.upper()

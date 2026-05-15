@@ -13,13 +13,11 @@ Telegram / REST API
   RAG Chain (chain.py)
   ├── Retriever  →  ChromaDB (localhost:8001)  ←  SentenceTransformers (BAAI/bge-m3)
   └── Generator  →  Ollama (localhost:11434)   ←  qwen2.5:7b (or any pulled model)
+        │           JSON mode enforced + 1-retry on parse failure
         ▲
   Ingestion Pipeline
   └── ZiraatYatirimScraper
-      ├── Sabah Stratejisi  (HTML → semantic records per company)
-      ├── Günlük Teknik Bülten  (image → Ollama vision, optional)
-      ├── Hisse Öneri Portföyü  (image → Ollama vision, optional)
-      └── Haftalık Teknik Hisse Önerileri  (image → Ollama vision, optional)
+      └── Sabah Stratejisi  (HTML → semantic records per company, daily)
 ```
 
 ---
@@ -48,13 +46,21 @@ Key `.env` variables:
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | — | **Required.** From @BotFather |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | LLM used for generation |
-| `OLLAMA_VISION_MODEL` | _(empty)_ | Optional vision model for image-based bulletins (e.g. `llava:7b`) |
 | `CHROMA_COLLECTION_NAME` | `financial_bulletins` | Collection name in ChromaDB |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | SentenceTransformers model |
 | `EMBEDDING_DEVICE` | `auto` | `auto` / `cuda` / `cpu` |
 | `RETRIEVER_TOP_K` | `6` | Chunks returned per query |
 | `RAG_MIN_CHUNK_SCORE` | `0.12` | Minimum cosine similarity to use a chunk |
 | `INGEST_CRON_HOUR` | `8` | Hour for the daily auto-ingestion job |
+
+**LLM generation settings** (not in `.env` — change in `app/rag/chain.py`):
+
+| Constant | Value | Description |
+|---|---|---|
+| `_NUM_PREDICT_DEFAULT` | `1024` | Token budget for single-stock queries |
+| `_NUM_PREDICT_OVERVIEW` | `2500` | Token budget for morning overview (up to 18 companies) |
+
+The LLM is called with Ollama's **JSON mode** (`format="json"`), which constrains the model at the inference level to produce syntactically valid JSON. If parsing still fails, the chain retries once with an explicit reminder before returning a degraded response.
 
 ### 2. Start infrastructure
 
@@ -83,29 +89,17 @@ make run
 
 ## First-time ingestion
 
-On a fresh database, run ingestion before querying. Two options:
+On a fresh database, run ingestion before querying:
 
-**Today only** (fast, ~seconds):
 ```bash
 make ingest-sync
 ```
 
-**Last 7 days** (recommended for first run):
-```bash
-make ingest-historical
-# or with custom day count:
-curl -X POST http://localhost:8000/api/v1/ingest/historical \
-     -H "Content-Type: application/json" \
-     -d '{"days": 14}'
-```
+The scheduler then runs automatically every weekday at `INGEST_CRON_HOUR` (default 08:00) to keep the collection up to date with each day's bulletin.
 
-**Clean start** — wipe the database and re-ingest:
+**Clean start** — wipe the database and re-ingest today's bulletin:
 ```bash
-make reset-and-historical
-# or:
-curl -X POST http://localhost:8000/api/v1/ingest/reset-and-historical \
-     -H "Content-Type: application/json" \
-     -d '{"days": 7}'
+make reset-collection && make ingest-sync
 ```
 
 ---
@@ -227,41 +221,17 @@ curl -X POST http://localhost:8000/api/v1/collection/reset
 |---|---|---|---|
 | `POST` | `/ingest/trigger` | — | Start today's ingestion in the background |
 | `POST` | `/ingest/trigger/sync` | — | Run today's ingestion and wait for result |
-| `POST` | `/ingest/historical` | `{"days": 7}` | Ingest the last N days of Sabah Stratejisi bulletins |
-| `POST` | `/ingest/reset-and-historical` | `{"days": 7}` | Wipe collection + ingest last N days in one call |
 
-**Historical ingestion — how it works:**
-
-1. Fetches the current Sabah Stratejisi page.
-2. Scans for archive links: `<select>` dropdowns whose options have URL values, and direct PDF `<a href>` links.
-3. For each archive link found (up to the `days` cutoff):
-   - **PDF** — downloads, extracts text via PyMuPDF, parses semantic company records.
-   - **HTML page** — fetches and parses with the same HTML parser as today's bulletin.
-4. Deduplicates by date and upserts to ChromaDB.
-
-> If the Ziraat website uses AJAX for its date picker (no URL in the option values), only today's bulletin will be found. Check the logs for `Historical: N archive link(s) found`.
-
-**Historical ingestion example:**
-```bash
-# Ingest last 14 days
-curl -X POST http://localhost:8000/api/v1/ingest/historical \
-     -H "Content-Type: application/json" \
-     -d '{"days": 14}'
-
-# Wipe + rebuild from last 7 days
-curl -X POST http://localhost:8000/api/v1/ingest/reset-and-historical \
-     -H "Content-Type: application/json" \
-     -d '{"days": 7}'
-```
+Ingestion is idempotent — running it twice on the same day upserts the same chunk IDs and produces no duplicates.
 
 **Response:**
 ```json
 {
   "success": true,
-  "message": "Historical ingestion complete (7 days)",
-  "total_documents": 87,
-  "total_chunks": 142,
-  "upserted": 142,
+  "message": "Ingestion complete",
+  "total_documents": 12,
+  "total_chunks": 12,
+  "upserted": 12,
   "errors": []
 }
 ```
@@ -284,8 +254,6 @@ make run                  # uvicorn with --reload
 # Ingestion
 make ingest               # async trigger (returns immediately)
 make ingest-sync          # sync trigger (waits for result)
-make ingest-historical    # last 7 days
-make reset-and-historical # wipe + last 7 days
 
 # Monitoring
 make stats                # GET /api/v1/stats
@@ -316,7 +284,7 @@ make stats
 # or
 make health
 ```
-If `document_count` is 0, run `make ingest-sync` or `make ingest-historical`.
+If `document_count` is 0, run `make ingest-sync`.
 
 **Date filter removing all results**
 
@@ -330,9 +298,16 @@ The log shows the actual dates stored. If they are outside the query window, inc
 
 The existing ChromaDB collection was created with a different vector dimension. Run:
 ```bash
-curl -X POST http://localhost:8000/api/v1/collection/reset
-make ingest-historical
+make reset-collection
+make ingest-sync
 ```
+
+**LLM returns empty or malformed response on overview queries**
+
+The morning overview (up to 18 companies) uses `_NUM_PREDICT_OVERVIEW = 2500` tokens. If
+responses still look cut off, increase this constant in `app/rag/chain.py`. The chain
+automatically retries once when the LLM output cannot be parsed as JSON — check the logs
+for `[rag] JSON parse failed — retrying once`.
 
 **Ollama not reachable**
 
